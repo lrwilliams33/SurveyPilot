@@ -33,20 +33,20 @@ add_shortcode('survey_pilot', function () {
 
     switch ($step) {
         case 'info':
-            $template_file = SP_PLUGIN_PATH . 'templates/user-info-page.php';
+            $template_file = SP_PLUGIN_PATH . 'templates/user-templates/user-info-page.php';
             break;
 
         case 'survey':
-            $template_file = SP_PLUGIN_PATH . 'templates/user-survey-page.php';
+            $template_file = SP_PLUGIN_PATH . 'templates/user-templates/user-survey-page.php';
             break;
 
         case 'confirmation':
-            $template_file = SP_PLUGIN_PATH . 'templates/user-confirmation-page.php';
+            $template_file = SP_PLUGIN_PATH . 'templates/user-templates/user-confirmation-page.php';
             break;
 
         case 'start':
         default:
-            $template_file = SP_PLUGIN_PATH . 'templates/user-start-page.php';
+            $template_file = SP_PLUGIN_PATH . 'templates/user-templates/user-start-page.php';
             break;
     }
 
