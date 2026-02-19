@@ -1,0 +1,91 @@
+.sp-dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.sp-survey-list {
+    margin-top: 20px;
+}
+
+.sp-btn-large {
+    font-size: 16px !important;
+    padding: 12px 22px !important;
+    height: auto !important;
+    line-height: normal !important;
+    border-radius: 8px !important;
+    font-weight: 600;
+}
+
+.sp-survey-card {
+    background: #fff;
+    border: 1px solid #ddd;
+    padding: 20px;
+    margin-bottom: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-radius: 6px;
+}
+
+.sp-survey-card h2 {
+    margin: 0 0 5px 0;
+    font-size: 18px;
+}
+
+.sp-meta {
+    font-size: 13px;
+    color: #666;
+}
+
+.sp-status {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    margin-right: 10px;
+}
+
+.sp-published {
+    background: #d4edda;
+    color: #155724;
+}
+
+.sp-draft {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.sp-survey-actions .button {
+    margin-left: 5px;
+}
+
+.sp-dashboard-content {
+    display: flex;
+    gap: 30px; /* space between left and right */
+}
+
+/* Left column takes most space */
+.sp-dashboard-left {
+    flex: 3;
+}
+
+/* Right column is sidebar */
+.sp-dashboard-right {
+    flex: 1;
+    background: #fff;
+    border: 1px solid #ddd;
+    padding: 20px;
+    border-radius: 6px;
+    line-height: 1.5;
+    font-size: 13px;
+    max-height: 600px; /* optional: scroll if content too tall */
+    overflow-y: auto;
+}
+
+.sp-dashboard-right pre {
+    background: #f7f7f7;
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 13px;
+    overflow-x: auto;
+}
