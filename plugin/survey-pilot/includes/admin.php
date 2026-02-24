@@ -31,13 +31,16 @@ function sp_handle_create_survey() {
     }
 
     // Make sure the function exists
-    if (!function_exists('sp_create_admin_survey')) {
+    if (!function_exists('sp_add_survey_info_row')) {
         wp_die('Survey creation function is missing.');
     }
 
     // Create the survey
     $survey_title = sanitize_text_field($_POST['sp_survey_title']);
-    sp_create_admin_survey($survey_title);
+    $description = isset($_POST['sp_survey_description']) ? sanitize_textarea_field($_POST['sp_survey_description']) : null;
+    $instructions = isset($_POST['sp_survey_instructions']) ? sanitize_textarea_field($_POST['sp_survey_instructions']) : null;
+    
+    sp_add_survey_info_row($survey_title, $description, $instructions);
 
     wp_redirect(admin_url('admin.php?page=survey-pilot&created=1'));
     exit;
@@ -69,16 +72,4 @@ add_action('admin_init', function() {
         wp_redirect(admin_url('admin.php?page=survey-pilot&deleted=1'));
         exit;
     }
-});
-
-// Handle Create Survey Submission
-add_action('admin_post_sp_create_survey', function() {
-    if (!isset($_POST['sp_survey_title'], $_POST['_wpnonce']) ||
-        !wp_verify_nonce($_POST['_wpnonce'], 'sp_create_survey_nonce')) {
-        wp_die('Security check failed');
-    }
-
-    sp_create_admin_survey(sanitize_text_field($_POST['sp_survey_title']));
-    wp_redirect(admin_url('admin.php?page=survey-pilot&created=1'));
-    exit;
 });

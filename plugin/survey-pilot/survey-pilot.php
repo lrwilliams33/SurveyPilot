@@ -16,7 +16,7 @@ define('SP_URL', plugin_dir_url(__FILE__));
 
 
 require_once SP_PATH . 'includes/database.php';
-register_activation_hook(__FILE__, 'add_master_table');
+register_activation_hook(__FILE__, 'add_tables');
 
 require_once SP_PATH . 'includes/admin.php';
 require_once SP_PATH . 'includes/admin-pages.php';
