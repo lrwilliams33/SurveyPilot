@@ -2,7 +2,7 @@
     <h2>Survey Questions</h2>
 
     <?php
-    $confirmation_url = esc_url(add_query_arg('sp_step', 'confirmation', get_permalink()));
+    $confirmation_url = esc_url(add_query_arg(['sp_step' => 'confirmation', 'sp_survey_id' => (int) $sp_survey_id], get_permalink()));
     ?>
 
     <form method="post" action="<?php echo $confirmation_url; ?>">

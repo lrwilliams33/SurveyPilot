@@ -15,7 +15,7 @@
     </div>
 
     <?php
-    $info_url = esc_url(add_query_arg('sp_step', 'info', get_permalink()));
+    $info_url = esc_url(add_query_arg(['sp_step' => 'info', 'sp_survey_id' => (int) $sp_survey_id], get_permalink()));
     ?>
     <a href="<?php echo $info_url; ?>" class="sp-button">Begin Survey</a>
 </div>

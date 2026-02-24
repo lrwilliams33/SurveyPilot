@@ -8,9 +8,10 @@ $email = $current_user->user_email;
     <h2>General Information</h2>
 
     <?php
-    $survey_url = esc_url(add_query_arg('sp_step', 'survey', get_permalink()));
+    $survey_url = esc_url(add_query_arg(['sp_step' => 'survey', 'sp_survey_id' => (int) $sp_survey_id], get_permalink()));
     ?>
     <form method="post" action="<?php echo $survey_url; ?>">
+        <input type="hidden" name="sp_survey_id" value="<?php echo (int) $sp_survey_id; ?>" />
         <label>Name:</label>
         <input type="text" name="sp_name" value="<?php echo esc_attr($name); ?>" required />
 

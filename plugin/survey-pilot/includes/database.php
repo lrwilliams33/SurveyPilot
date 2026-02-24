@@ -113,6 +113,45 @@ function sp_add_survey_info_row($title, $description = null, $instructions = nul
     return $wpdb->insert_id;
 }
 
+function sp_update_survey_info_row($survey_id, $title, $description = null, $instructions = null) {
+    global $wpdb;
+
+    $survey_id = intval($survey_id);
+    if ($survey_id <= 0) {
+        return new WP_Error('invalid_survey_id', 'Invalid survey ID provided');
+    }
+
+    $title = sanitize_text_field($title);
+    $description = sanitize_textarea_field($description);
+    $instructions = sanitize_textarea_field($instructions);
+
+    $update_status = $wpdb->update(
+        $wpdb->prefix . 'survey_info',
+        [
+            'title' => $title,
+            'survey_description' => $description,
+            'instructions' => $instructions
+        ],
+        [
+            'id' => $survey_id
+        ],
+        [
+            '%s',
+            '%s',
+            '%s'
+        ],
+        [
+            '%d'
+        ]
+    );
+
+    if ($update_status === false) {
+        return new WP_Error('db_update_error', 'Failed to update survey info in the database');
+    }
+
+    return $update_status;
+}
+
 function sp_add_survey_question_row(
     $survey_id, 
     $question_text,
