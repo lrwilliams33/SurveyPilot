@@ -31,21 +31,56 @@ add_action('admin_enqueue_scripts', function() {
         'survey-pilot-admin',
         SP_URL . 'assets/css/admin.css',
         [],
-        '1.0'
+        '1.4'
     );
 
     wp_enqueue_script(
         'survey-pilot-admin',
         SP_URL . 'assets/js/admin.js',
         [],
-        '1.0',
+        '1.4',
         true
     );
+
+    wp_localize_script('survey-pilot-admin', 'spAdmin', [
+        'ajaxUrl' => admin_url('admin-ajax.php'),
+        'nonce'   => wp_create_nonce('sp_save_survey_order'),
+    ]);
 });
 
-// Handle Create Survey Submission
+// Handle sort order save via AJAX
+add_action('wp_ajax_sp_save_survey_order', 'sp_handle_save_survey_order');
+
+function sp_handle_save_survey_order() {
+    if (!check_ajax_referer('sp_save_survey_order', 'nonce', false)) {
+        wp_send_json_error('Invalid nonce');
+    }
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error('Unauthorized');
+    }
+
+    global $wpdb;
+    $order = isset($_POST['order']) ? (array) $_POST['order'] : [];
+
+    foreach ($order as $position => $survey_id) {
+        $survey_id = absint($survey_id);
+        if (!$survey_id) continue;
+        $wpdb->update(
+            $wpdb->prefix . 'survey_info',
+            ['sort_order' => $position + 1],
+            ['id'         => $survey_id],
+            ['%d'],
+            ['%d']
+        );
+    }
+
+    wp_send_json_success();
+}
+
+// Handle Create / Edit / Duplicate Survey Submission
 add_action('admin_post_sp_create_survey', 'sp_handle_create_survey');
 add_action('admin_post_sp_edit_survey', 'sp_handle_edit_survey');
+add_action('admin_post_sp_duplicate_survey', 'sp_handle_duplicate_survey');
 
 function sp_handle_create_survey() {
     if (!isset($_POST['sp_survey_title'], $_POST['_wpnonce']) ||
@@ -105,6 +140,73 @@ function sp_handle_edit_survey() {
     sp_replace_survey_questions_from_post($survey_id);
 
     wp_redirect(admin_url('admin.php?page=survey-pilot&updated=1'));
+    exit;
+}
+
+function sp_handle_duplicate_survey() {
+    if (!current_user_can('manage_options')) {
+        wp_die('Insufficient permissions');
+    }
+
+    if (!isset($_GET['survey_id'], $_GET['_wpnonce'])) {
+        wp_die('Missing parameters');
+    }
+
+    $survey_id = intval($_GET['survey_id']);
+    if ($survey_id <= 0 || !wp_verify_nonce($_GET['_wpnonce'], 'sp_duplicate_survey_' . $survey_id)) {
+        wp_die('Security check failed');
+    }
+
+    global $wpdb;
+
+    $survey_info_table = $wpdb->prefix . 'survey_info';
+    $survey_questions_table = $wpdb->prefix . 'survey_questions';
+
+    $original = $wpdb->get_row(
+        $wpdb->prepare("SELECT * FROM {$survey_info_table} WHERE id = %d", $survey_id),
+        ARRAY_A
+    );
+
+    if (!$original) {
+        wp_die('Original survey not found.');
+    }
+
+    $original_title = $original['title'];
+    $new_title = $original_title . ' (Copy)';
+
+    $new_survey_id = sp_add_survey_info_row(
+        $new_title,
+        $original['survey_description'],
+        $original['instructions']
+    );
+
+    if (is_wp_error($new_survey_id) || !$new_survey_id) {
+        wp_die('Failed to duplicate survey.');
+    }
+
+    $questions = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT * FROM {$survey_questions_table} WHERE survey_id = %d ORDER BY question_order ASC, id ASC",
+            $survey_id
+        ),
+        ARRAY_A
+    );
+
+    if (!empty($questions)) {
+        foreach ($questions as $question) {
+            sp_add_survey_question_row(
+                $new_survey_id,
+                $question['question_text'],
+                $question['question_order'],
+                $question['scale_min'],
+                $question['scale_max'],
+                $question['question_title'],
+                $question['scale_labels']
+            );
+        }
+    }
+
+    wp_redirect(admin_url('admin.php?page=survey-pilot&duplicated=1'));
     exit;
 }
 

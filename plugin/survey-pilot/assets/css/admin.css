@@ -5,8 +5,9 @@
 
 .sp-dashboard h1,
 .sp-admin-page h1 {
-    font-size: 34px;
+    font-size: 32px;
     line-height: 1.2;
+    margin: 0;
 }
 
 .sp-dashboard h2,
@@ -15,24 +16,82 @@
 }
 
 .sp-dashboard-header {
-    display: flex;
-    gap: 30px;
-    align-items: center;
-    padding-top: 16px;
-    padding-bottom: 16px;
+    padding-top: 6px;
+    padding-bottom: 4px;
+    text-align: center;
 }
 
-.sp-dashboard-header-left {
-    flex: 3;
+.sp-survey-list-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding-right: 52px;
-    box-sizing: border-box;
+    margin-top: 1px;
+    margin-bottom: 16px;
+    padding-right: 1px;
 }
 
-.sp-dashboard-header-right {
-    flex: 1;
+.sp-survey-list-label {
+    font-size: 28px;
+    font-weight: 600;
+    color: #1d2327;
+    margin-left: 6px;
+}
+
+.sp-list-header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.sp-sort-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sp-sort-label {
+    font-size: 14px;
+    color: #50575e;
+    white-space: nowrap;
+}
+
+.sp-sort-select {
+    font-size: 14px;
+    padding: 4px 8px;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    background: #fff;
+    color: #1d2327;
+    cursor: pointer;
+}
+
+
+/* Drag-and-drop visual states */
+
+.sp-survey-card.sp-dragging {
+    opacity: 0.4;
+    box-shadow: none;
+}
+
+.sp-survey-card.sp-drop-above::before,
+.sp-survey-card.sp-drop-below::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: #2271b1;
+    border-radius: 1px;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.sp-survey-card.sp-drop-above::before {
+    top: -9.5px;
+}
+
+.sp-survey-card.sp-drop-below::after {
+    bottom: -9.5px;
 }
 
 .sp-admin-page .wrap {
@@ -102,14 +161,34 @@
 }
 
 .sp-survey-card {
+    position: relative;
     background: #fff;
     border: 1px solid #ddd;
-    padding: 20px 16px 20px 16px;
+    padding: 16px 16px 16px 16px;
     margin-bottom: 15px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sp-survey-card:hover {
+    background: #f5f5f5;
+    border-color: #c7c7c7;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.sp-survey-title:hover {
+    text-decoration: underline;
+}
+
+.sp-survey-card.sp-nohover,
+.sp-survey-card.sp-nohover:hover {
+    background: #fff;
+    border-color: #ddd;
+    box-shadow: none;
 }
 
 .sp-survey-info {
@@ -118,34 +197,89 @@
 }
 
 .sp-survey-title {
-    font-size: 28px;
+    font-size: 26px;
     font-weight: 700;
     display: block;
-    margin-bottom: 8px;
+    width: fit-content;
     color: #1d2327;
-    line-height: 1.35;
-    min-height: 1.35em;
+    line-height: 1;
+    padding-bottom: 4px;
+    max-width: 90%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .sp-survey-desc {
     display: block;
+    width: fit-content;
     color: #5f6368;
     font-size: 18px;
     line-height: 1.35;
-    max-width: 80%;
+    max-width: 90%;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    margin-top: 6px;
+    margin-top: 2px;
+    cursor: text;
 }
 
-.sp-survey-id {
-    display: block;
-    color: #1d2327;
-    font-size: 17px;
-    font-weight: 700;
+.sp-survey-shortcode-display {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    margin-bottom: 4px;
     line-height: 1.35;
-    margin-top: 4px;
+}
+
+.sp-survey-shortcode-display code {
+    cursor: text;
+}
+
+.sp-survey-shortcode-display code {
+    font-size: 14px;
+    color: #444;
+    background: #f0f0f1;
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid #ddd;
+    font-family: monospace;
+    user-select: all;
+}
+
+.sp-copy-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    line-height: 1;
+    border-radius: 2px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.sp-copy-btn:hover {
+    background: #ebebeb;
+}
+
+.sp-copy-btn:focus {
+    background: #ebebeb;
+    outline: none;
+}
+
+.sp-copy-btn.sp-copied {
+    background: #d7f5e0;
+}
+
+.sp-copy-icon {
+    display: block;
+    pointer-events: none;
 }
 
 .sp-meta {
@@ -172,6 +306,83 @@
 
 .sp-survey-actions .button {
     margin-left: 5px;
+}
+
+.sp-survey-actions {
+    position: relative;
+}
+
+.sp-survey-menu-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    line-height: 1;
+    vertical-align: middle;
+    border-radius: 6px;
+    border: 2px solid #1d2327;
+    background: #fff;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+    transition: background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.sp-survey-menu-toggle:hover,
+.sp-survey-menu-toggle:focus {
+    background: #f0f0f1;
+    border-color: #000;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+}
+
+.sp-survey-menu-icon {
+    display: block;
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
+}
+
+.sp-survey-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 6px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    min-width: 160px;
+    padding: 4px 0;
+    z-index: 10;
+    display: none;
+}
+
+.sp-survey-menu.is-open {
+    display: block;
+}
+
+.sp-survey-menu-item {
+    display: block;
+    width: 100%;
+    padding: 8px 14px;
+    background: transparent;
+    border: none;
+    box-sizing: border-box;
+    text-align: left;
+    font-size: 15px;
+    text-decoration: none;
+    color: #1d2327;
+    cursor: pointer;
+}
+
+.sp-survey-menu-item:hover,
+.sp-survey-menu-item:focus {
+    background: #f0f0f1;
+}
+
+.sp-survey-menu-item-delete {
+    color: #d63638;
 }
 
 .sp-survey-actions .button:not(.sp-btn-danger-outline),
@@ -212,9 +423,10 @@
 /* Right column is sidebar */
 .sp-dashboard-right {
     flex: 1;
+    align-self: flex-start;
     background: #fff;
     border: 1px solid #ddd;
-    padding: 24px;
+    padding: 24px 24px 32px 24px;
     border-radius: 6px;
     line-height: 1.5;
     font-size: 20px;
@@ -457,8 +669,14 @@
 }
 
 .sp-modal-dialog h2 {
-    margin-top: 0;
-    font-size: 20px;
+    margin-top: 16px;
+    font-size: 26px;
+}
+
+.sp-modal-dialog p {
+    font-size: 18px;
+    line-height: 1.5;
+    margin: 8px 0 0;
 }
 
 .sp-modal-actions {

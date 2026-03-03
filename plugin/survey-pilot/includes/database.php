@@ -16,6 +16,7 @@ function add_tables(){
         title VARCHAR(255) NOT NULL,
         survey_description TEXT NULL,
         instructions TEXT NULL,
+        sort_order INT UNSIGNED NOT NULL DEFAULT 0,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (id)
@@ -105,12 +106,22 @@ function sp_add_survey_info_row($title, $description = null, $instructions = nul
     );
 
     if ($insert_status === false) {
-        //alter these to be redirects, we don't have anything yet to display msgs
         return new WP_Error('db_insert_error', 'Failed to insert survey info into the database');
     }
-    
-    //redirect, not msg
-    return $wpdb->insert_id;
+
+    $insert_id = $wpdb->insert_id;
+
+    // Use the survey's own ID as its default sort_order so new surveys
+    // appear in a predictable position within custom ordering.
+    $wpdb->update(
+        $wpdb->prefix . 'survey_info',
+        ['sort_order' => $insert_id],
+        ['id'         => $insert_id],
+        ['%d'],
+        ['%d']
+    );
+
+    return $insert_id;
 }
 
 function sp_update_survey_info_row($survey_id, $title, $description = null, $instructions = null) {

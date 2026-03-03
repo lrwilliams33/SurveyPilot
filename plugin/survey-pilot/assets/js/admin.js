@@ -10,9 +10,11 @@
     const confirmBtn = modal.querySelector("[data-sp-confirm]");
 
     let deleteUrl = null;
+    const surveyNameEl = document.getElementById("sp-delete-survey-name");
 
-    function openModal(url) {
+    function openModal(url, surveyTitle) {
       deleteUrl = url;
+      if (surveyNameEl) surveyNameEl.textContent = surveyTitle || "this survey";
       modal.classList.add("is-open");
       modal.setAttribute("aria-hidden", "false");
       dialog?.focus?.();
@@ -28,8 +30,9 @@
       btn.addEventListener("click", (e) => {
         e.preventDefault();
         const url = btn.getAttribute("data-sp-delete-url");
+        const title = btn.getAttribute("data-sp-survey-title") || "";
         if (!url) return;
-        openModal(url);
+        openModal(url, title);
       });
     });
 
@@ -46,6 +49,108 @@
 
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") closeModal();
+    });
+  }
+
+  // Make entire survey cards clickable on the dashboard (except buttons/links)
+  function initDashboardCards() {
+    const cards = document.querySelectorAll(".sp-survey-card[data-edit-url]");
+    if (!cards.length) return;
+
+    const openMenus = [];
+
+    function closeAllMenus(except) {
+      openMenus.forEach((menu) => {
+        if (menu !== except) {
+          menu.classList.remove("is-open");
+          const toggleEl = menu.closest(".sp-survey-card")?.querySelector(
+            ".sp-survey-menu-toggle"
+          );
+          if (toggleEl) toggleEl.setAttribute("aria-expanded", "false");
+        }
+      });
+    }
+
+    cards.forEach((card) => {
+      const url = card.getAttribute("data-edit-url");
+      if (!url) return;
+
+      card.addEventListener("click", (e) => {
+        // Prevent navigation after a drag operation
+        if (card.dataset.justDragged) {
+          delete card.dataset.justDragged;
+          return;
+        }
+        const target = e.target;
+        if (
+          target.closest("a") ||
+          target.closest("button") ||
+          target.closest(".sp-survey-desc") ||
+          target.closest(".sp-survey-shortcode-display code")
+        ) {
+          return;
+        }
+        window.location.href = url;
+      });
+
+      [
+        card.querySelector(".sp-copy-btn"),
+        card.querySelector(".sp-survey-desc"),
+        card.querySelector(".sp-survey-shortcode-display code"),
+      ].forEach((el) => {
+        if (!el) return;
+        el.addEventListener("mouseenter", () => card.classList.add("sp-nohover"));
+        el.addEventListener("mouseleave", () => card.classList.remove("sp-nohover"));
+      });
+
+      const actions = card.querySelector(".sp-survey-actions");
+      if (actions) {
+        actions.addEventListener("mouseenter", () => {
+          card.classList.add("sp-nohover");
+        });
+        actions.addEventListener("mouseleave", () => {
+          card.classList.remove("sp-nohover");
+        });
+
+        const toggle = actions.querySelector(".sp-survey-menu-toggle");
+        const menu = actions.querySelector(".sp-survey-menu");
+
+        if (menu) {
+          openMenus.push(menu);
+        }
+
+        if (toggle && menu) {
+          toggle.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const isOpen = menu.classList.toggle("is-open");
+            toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+            if (isOpen) {
+              closeAllMenus(menu);
+            }
+          });
+        }
+      }
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".sp-survey-card")) {
+        closeAllMenus(null);
+      }
+    });
+
+    document.querySelectorAll(".sp-copy-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const shortcode = btn.getAttribute("data-shortcode");
+        if (!shortcode) return;
+        btn.classList.add("sp-copied");
+        navigator.clipboard.writeText(shortcode);
+      });
+
+      btn.addEventListener("mouseleave", () => {
+        btn.classList.remove("sp-copied");
+      });
     });
   }
 
@@ -249,8 +354,173 @@
     refreshQuestionNumbers();
   }
 
+  function initSortAndDrag() {
+    const list = document.querySelector(".sp-survey-list");
+    const select = document.getElementById("sp-sort-select");
+    if (!list || !select) return;
+
+    const STORAGE_KEY = "sp_sort_order";
+    const saved = localStorage.getItem(STORAGE_KEY) || "updated_desc";
+    select.value = saved;
+
+    function sortList(key) {
+      const cards = Array.from(list.querySelectorAll(".sp-survey-card"));
+
+      if (key === "custom") {
+        list.classList.add("sp-custom-order-mode");
+        cards.forEach((c) => c.setAttribute("draggable", "true"));
+        // Sort by stored sort_order if any card has one set
+        const hasOrder = cards.some((c) => parseInt(c.dataset.sortOrder) > 0);
+        if (hasOrder) {
+          cards.sort(
+            (a, b) => parseInt(a.dataset.sortOrder) - parseInt(b.dataset.sortOrder)
+          );
+          cards.forEach((c) => list.appendChild(c));
+        }
+        return;
+      }
+
+      list.classList.remove("sp-custom-order-mode");
+      cards.forEach((c) => c.setAttribute("draggable", "false"));
+
+      cards.sort((a, b) => {
+        switch (key) {
+          case "updated_desc":
+            return new Date(b.dataset.updated) - new Date(a.dataset.updated);
+          case "updated_asc":
+            return new Date(a.dataset.updated) - new Date(b.dataset.updated);
+          case "created_desc":
+            return new Date(b.dataset.created) - new Date(a.dataset.created);
+          case "created_asc":
+            return new Date(a.dataset.created) - new Date(b.dataset.created);
+          case "alpha_asc":
+            return a.dataset.title.localeCompare(b.dataset.title);
+          case "alpha_desc":
+            return b.dataset.title.localeCompare(a.dataset.title);
+          default:
+            return 0;
+        }
+      });
+      cards.forEach((c) => list.appendChild(c));
+    }
+
+    sortList(saved);
+    list.style.visibility = "";
+
+    select.addEventListener("change", () => {
+      const key = select.value;
+      localStorage.setItem(STORAGE_KEY, key);
+      sortList(key);
+    });
+
+    // Drag-and-drop for custom order
+    let dragSrc = null;
+
+    list.addEventListener("dragstart", (e) => {
+      const card = e.target.closest(".sp-survey-card");
+      if (!card) return;
+      dragSrc = card;
+      card.classList.add("sp-dragging");
+      e.dataTransfer.effectAllowed = "move";
+    });
+
+    list.addEventListener("dragend", (e) => {
+      const card = e.target.closest(".sp-survey-card");
+      if (card) {
+        card.classList.remove("sp-dragging");
+        card.dataset.justDragged = "1";
+      }
+      list
+        .querySelectorAll(".sp-drag-over")
+        .forEach((c) => c.classList.remove("sp-drag-over"));
+      dragSrc = null;
+      saveCustomOrder();
+    });
+
+    function clearDropIndicators() {
+      list
+        .querySelectorAll(".sp-drop-above, .sp-drop-below")
+        .forEach((c) => c.classList.remove("sp-drop-above", "sp-drop-below"));
+    }
+
+    function getDropPosition(card, clientY) {
+      const rect = card.getBoundingClientRect();
+      return clientY < rect.top + rect.height / 2 ? "above" : "below";
+    }
+
+    // Always use ::before (sp-drop-above) so only one pseudo-element renders.
+    // For "below" cases, promote to the next card's "above" indicator.
+    // Only use sp-drop-below (::after) when there is no next card.
+    function setDropIndicator(card, pos) {
+      clearDropIndicators();
+      if (pos === "above") {
+        card.classList.add("sp-drop-above");
+      } else {
+        let next = card.nextElementSibling;
+        while (next && (!next.classList.contains("sp-survey-card") || next === dragSrc)) {
+          next = next.nextElementSibling;
+        }
+        if (next) {
+          next.classList.add("sp-drop-above");
+        } else {
+          card.classList.add("sp-drop-below");
+        }
+      }
+    }
+
+    list.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      const card = e.target.closest(".sp-survey-card");
+      if (!card || card === dragSrc) return;
+      setDropIndicator(card, getDropPosition(card, e.clientY));
+    });
+
+    list.addEventListener("dragleave", (e) => {
+      if (!list.contains(e.relatedTarget)) clearDropIndicators();
+    });
+
+    list.addEventListener("drop", (e) => {
+      e.preventDefault();
+      if (!dragSrc) return;
+
+      // Use the card that currently has a drop indicator (covers drops in gaps)
+      const above = list.querySelector(".sp-drop-above");
+      const below = list.querySelector(".sp-drop-below");
+      clearDropIndicators();
+
+      if (above && above !== dragSrc) {
+        list.insertBefore(dragSrc, above);
+      } else if (below && below !== dragSrc) {
+        list.insertBefore(dragSrc, below.nextSibling);
+      }
+      // If neither indicator is set (dropped back on itself) — do nothing
+    });
+
+    function saveCustomOrder() {
+      if (typeof spAdmin === "undefined") return;
+      const cards = Array.from(list.querySelectorAll(".sp-survey-card"));
+      // Update data-sort-order attributes immediately for next page load
+      cards.forEach((c, i) => {
+        c.dataset.sortOrder = i + 1;
+      });
+      const params = new URLSearchParams({
+        action: "sp_save_survey_order",
+        nonce: spAdmin.nonce,
+      });
+      cards.forEach((c) => params.append("order[]", c.dataset.surveyId));
+      fetch(spAdmin.ajaxUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: params,
+      });
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     initAutoExpand();
     initQuestionBuilder();
+    initDashboardCards();
+    initSortAndDrag();
   });
 })();
