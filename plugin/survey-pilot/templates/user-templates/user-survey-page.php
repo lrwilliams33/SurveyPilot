@@ -45,16 +45,24 @@ if (!empty($current_group)) {
 
     <h2>Survey Questions</h2>
 
-    <?php
+    <!-- <?php
     $confirmation_url = esc_url(add_query_arg(
         ['sp_step' => 'confirmation', 'sp_survey_id' => (int) $sp_survey_id],
         get_permalink()
     ));
+    ?> -->
+
+    <!-- Changed confirmation URL to admin-post.php, because we want to handle the form submission in the function sp_handle_submit_survey, which is hooked to admin_post_sp_submit_survey -->
+    <?php
+    $confirmation_url = esc_url(admin_url('admin-post.php'));
     ?>
 
     <form method="post" action="<?php echo $confirmation_url; ?>">
+        <input type="hidden" name="action" value="sp_submit_survey">
+        <input type="hidden" name="sp_survey_id" value="<?php echo (int) $sp_survey_id; ?>">
 
     <?php
+    wp_nonce_field('sp_submit_survey');
     $question_number = 1;
 
     foreach ($groups as $group) :
@@ -108,7 +116,7 @@ if (!empty($current_group)) {
                             <td class="sp-radio-cell">
                                 <input
                                     type="radio"
-                                    name="question_<?php echo $question_id; ?>"
+                                    name="sp_answers[<?php echo $question_id; ?>]"
                                     value="<?php echo $i; ?>"
                                     required
                                 >
