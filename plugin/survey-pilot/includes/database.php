@@ -84,9 +84,11 @@ function sp_make_slug($text) {
 Following functions are for adding rows to the tables
 */
 
+//This function adds into the survey_info table to store created surveys
 function sp_add_survey_info_row($title, $description = null, $instructions = null) {
     global $wpdb;
 
+    //fetch the title, description, and instructions and format
     $title = sanitize_text_field($title);
     $description = sanitize_textarea_field($description);
     $instructions = sanitize_textarea_field($instructions);
@@ -124,45 +126,8 @@ function sp_add_survey_info_row($title, $description = null, $instructions = nul
     return $insert_id;
 }
 
-function sp_update_survey_info_row($survey_id, $title, $description = null, $instructions = null) {
-    global $wpdb;
 
-    $survey_id = intval($survey_id);
-    if ($survey_id <= 0) {
-        return new WP_Error('invalid_survey_id', 'Invalid survey ID provided');
-    }
-
-    $title = sanitize_text_field($title);
-    $description = sanitize_textarea_field($description);
-    $instructions = sanitize_textarea_field($instructions);
-
-    $update_status = $wpdb->update(
-        $wpdb->prefix . 'survey_info',
-        [
-            'title' => $title,
-            'survey_description' => $description,
-            'instructions' => $instructions
-        ],
-        [
-            'id' => $survey_id
-        ],
-        [
-            '%s',
-            '%s',
-            '%s'
-        ],
-        [
-            '%d'
-        ]
-    );
-
-    if ($update_status === false) {
-        return new WP_Error('db_update_error', 'Failed to update survey info in the database');
-    }
-
-    return $update_status;
-}
-
+//This function adds a row to the survey_questions table for a given survey, with question text and scale info
 function sp_add_survey_question_row(
     $survey_id, 
     $question_text,
@@ -227,5 +192,322 @@ function sp_add_survey_question_row(
 
     return $wpdb->insert_id;
 }
+
+//This function creates a new submission record in survey_response_info
+function sp_create_response_info($survey_id, $user_id = null) {
+    global $wpdb;
+
+    $table = $wpdb->prefix . 'survey_response_info';
+
+    $survey_id = absint($survey_id);
+    $user_id = ($user_id !== null && absint($user_id) > 0) ? absint($user_id) : null;
+
+    if ($user_id === null) {
+        $user_id = get_current_user_id();
+    }
+
+    if ($survey_id <= 0 || $user_id == null) {
+        return new WP_Error('sp_bad_survey_id_or_user_id', 'Invalid survey_id or user_id.');
+    }
+
+    $ok = $wpdb->insert(
+        $table,
+        [
+            'survey_id' => $survey_id,
+            'user_id' => $user_id,
+        ],
+        ['%d', '%d']
+    );
+
+    if ($ok === false) {
+        return new WP_Error('sp_db_error', 'Failed to create response record.', $wpdb->last_error);
+    }
+
+    return (int) $wpdb->insert_id; 
+}
+
+//This function creates a record for answers in the answers database table
+function sp_add_response_answer($response_id, $survey_id, $question_id, $answer_value) {
+    global $wpdb;
+
+    $answers_table = $wpdb->prefix . 'survey_response_answers';
+    $questions_table = $wpdb->prefix . 'survey_questions';
+
+    $response_id = absint($response_id);
+    $survey_id = absint($survey_id);
+    $question_id = absint($question_id);
+    $answer_value = absint($answer_value);
+
+    if ($response_id <= 0 || $question_id <= 0 || $survey_id <= 0) {
+        return new WP_Error('sp_bad_ids', 'Invalid response_id, survey_id, or question_id.');
+    }
+
+    $question = $wpdb->get_row(
+        $wpdb->prepare("SELECT * FROM {$questions_table} WHERE id = %d AND survey_id = %d", $question_id, $survey_id),
+        ARRAY_A
+    );
+
+    if (!$question) {
+        return new WP_Error('sp_bad_question', 'Question not found.');
+    }
+
+    $min = (int) $question['scale_min'];
+    $max = (int) $question['scale_max'];
+
+    if ($answer_value < $min || $answer_value > $max) {
+        return new WP_Error('sp_bad_answer', 'Answer value out of range.');
+    }
+
+    $ok = $wpdb->insert(
+        $answers_table,
+        [
+            'response_id' => $response_id,
+            'question_id' => $question_id,
+            'answer_value' => $answer_value,
+        ],
+        ['%d', '%d', '%d']
+    );
+
+    if ($ok === false) {
+        return new WP_Error('sp_db_error', 'Failed to save answer.', $wpdb->last_error);
+    }
+
+    return (int) $wpdb->insert_id;
+}
+
+function sp_save_survey_submission($survey_id, array $answers, $user_id = null) {
+    global $wpdb;
+
+    $survey_id = absint($survey_id);
+    if ($survey_id <= 0) {
+        return new WP_Error('sp_bad_survey_id', 'Invalid survey_id.');
+    }
+
+    if (empty($answers)) {
+        return new WP_Error('sp_no_answers', 'No answers submitted.');
+    }
+
+    //make sure that the submission table is updated and the answers table,
+    //we don't want a sql error that fails halfway and only updates one table
+    $wpdb->query('START TRANSACTION');
+
+    $response_id = sp_create_response_info($survey_id, $user_id);
+    if (is_wp_error($response_id)) {
+        $wpdb->query('ROLLBACK');
+        return $response_id;
+    }
+
+    foreach ($answers as $question_id => $answer_value) {
+        $res = sp_add_response_answer($response_id, $survey_id,$question_id, $answer_value);
+        if (is_wp_error($res)) {
+            $wpdb->query('ROLLBACK');
+            return $res;
+        }
+    }
+
+    $wpdb->query('COMMIT');
+    return $response_id;
+}
+
+/**
+ * The following functions will be used for Updates and Deletes from the admin-side, not the user side
+ * Includes the following:
+ * - Delete an entire survey and all related data
+ * - Delete a single question (ensuring it belongs to a specific survey)
+ * - Update survey_info fields (title/description/instructions)
+ * - Update a single question row (optionally ensuring it belongs to a specific survey)
+ */
+
+function sp_delete_survey($survey_id) {
+    global $wpdb;
+
+    $survey_id = absint($survey_id);
+    if ($survey_id <= 0) {
+        return new WP_Error('sp_bad_survey_id', 'Invalid survey_id.');
+    }
+
+    $survey_info_table       = $wpdb->prefix . 'survey_info';
+    $survey_questions_table  = $wpdb->prefix . 'survey_questions';
+    $response_info_table     = $wpdb->prefix . 'survey_response_info';
+    $response_answers_table  = $wpdb->prefix . 'survey_response_answers';
+
+    $wpdb->query('START TRANSACTION');
+
+    //Delete answers for all responses belonging to this survey
+    $ok = $wpdb->query(
+        $wpdb->prepare(
+            "DELETE a
+             FROM {$response_answers_table} a
+             INNER JOIN {$response_info_table} r ON a.response_id = r.id
+             WHERE r.survey_id = %d",
+            $survey_id
+        )
+    );
+    if ($ok === false) {
+        $wpdb->query('ROLLBACK');
+        return new WP_Error('sp_db_error', 'Failed to delete survey answers.', $wpdb->last_error);
+    }
+
+    //Delete response info rows
+    $ok = $wpdb->delete($response_info_table, ['survey_id' => $survey_id], ['%d']);
+    if ($ok === false) {
+        $wpdb->query('ROLLBACK');
+        return new WP_Error('sp_db_error', 'Failed to delete survey responses.', $wpdb->last_error);
+    }
+
+    //Delete questions
+    $ok = $wpdb->delete($survey_questions_table, ['survey_id' => $survey_id], ['%d']);
+    if ($ok === false) {
+        $wpdb->query('ROLLBACK');
+        return new WP_Error('sp_db_error', 'Failed to delete survey questions.', $wpdb->last_error);
+    }
+
+    //Delete the survey itself
+    $ok = $wpdb->delete($survey_info_table, ['id' => $survey_id], ['%d']);
+    if ($ok === false) {
+        $wpdb->query('ROLLBACK');
+        return new WP_Error('sp_db_error', 'Failed to delete survey.', $wpdb->last_error);
+    }
+
+    $wpdb->query('COMMIT');
+    return true;
+}
+
+/**
+ * Deletes a question by ID, and checks to see that it is for the specific survey
+ * Does not delete the response answers for this question, since prior data can be important
+ */
+function sp_delete_survey_question($question_id, $survey_id = null) {
+    global $wpdb;
+
+    $question_id = absint($question_id);
+    $survey_id = ($survey_id !== null) ? absint($survey_id) : null;
+
+    if ($question_id <= 0) {
+        return new WP_Error('sp_bad_question_id', 'Invalid question_id.');
+    }
+
+    $table = $wpdb->prefix . 'survey_questions';
+
+    // Delerete the question, ensuring it belongs to the specified survey if $survey_id is provided
+    if ($survey_id !== null && $survey_id > 0) {
+        $ok = $wpdb->delete($table, ['id' => $question_id, 'survey_id' => $survey_id], ['%d', '%d']);
+    } else {
+        $ok = $wpdb->delete($table, ['id' => $question_id], ['%d']);
+    }
+
+    if ($ok === false) {
+        return new WP_Error('sp_db_error', 'Failed to delete question.', $wpdb->last_error);
+    }
+
+    return (int) $ok; 
+}
+
+/**
+ * Update survey_info fields (title/description/instructions)
+ */
+function sp_update_survey_info_row($survey_id, $title, $description = null, $instructions = null) {
+    global $wpdb;
+
+    $survey_id = intval($survey_id);
+    if ($survey_id <= 0) {
+        return new WP_Error('invalid_survey_id', 'Invalid survey ID provided');
+    }
+
+    $title = sanitize_text_field($title);
+    $description = sanitize_textarea_field($description);
+    $instructions = sanitize_textarea_field($instructions);
+
+    $update_status = $wpdb->update(
+        $wpdb->prefix . 'survey_info',
+        [
+            'title' => $title,
+            'survey_description' => $description,
+            'instructions' => $instructions
+        ],
+        [
+            'id' => $survey_id
+        ],
+        [
+            '%s',
+            '%s',
+            '%s'
+        ],
+        [
+            '%d'
+        ]
+    );
+
+    if ($update_status === false) {
+        return new WP_Error('db_update_error', 'Failed to update survey info in the database');
+    }
+
+    return $update_status;
+}
+
+/**
+ * Update a single question row in survey_questions.
+ */
+function sp_update_survey_question_row(
+    $question_id,
+    $survey_id,
+    $question_text,
+    $question_order,
+    $scale_min = 1,
+    $scale_max = 5,
+    $question_title = null,
+    $scale_labels = null
+) {
+    global $wpdb;
+
+    $question_id = absint($question_id);
+    $survey_id   = absint($survey_id);
+
+    if ($question_id <= 0 || $survey_id <= 0) {
+        return new WP_Error('sp_bad_ids', 'Invalid question_id or survey_id.');
+    }
+
+    $question_title = ($question_title !== null && $question_title !== '') ? sanitize_text_field($question_title) : null;
+    $question_text  = sanitize_textarea_field($question_text);
+    $question_order = absint($question_order);
+    $scale_min      = absint($scale_min);
+    $scale_max      = absint($scale_max);
+    $scale_labels   = ($scale_labels !== null && $scale_labels !== '') ? sanitize_textarea_field($scale_labels) : null;
+
+    if (trim($question_text) === '') {
+        return new WP_Error('sp_empty_question_text', 'Question text cannot be empty.');
+    }
+    if ($question_order <= 0) {
+        return new WP_Error('sp_bad_question_order', 'Question order must be a positive integer.');
+    }
+    if ($scale_min < 1 || $scale_max < 1 || $scale_min >= $scale_max) {
+        return new WP_Error('sp_bad_scale', 'Scale min/max are invalid.');
+    }
+
+    $ok = $wpdb->update(
+        $wpdb->prefix . 'survey_questions',
+        [
+            'question_title' => $question_title,
+            'question_text'  => $question_text,
+            'scale_min'      => $scale_min,
+            'scale_max'      => $scale_max,
+            'scale_labels'   => $scale_labels,
+            'question_order' => $question_order,
+        ],
+        [
+            'id'        => $question_id,
+            'survey_id' => $survey_id, 
+        ],
+        ['%s', '%s', '%d', '%d', '%s', '%d'],
+        ['%d', '%d']
+    );
+
+    if ($ok === false) {
+        return new WP_Error('sp_db_error', 'Failed to update question.', $wpdb->last_error);
+    }
+
+    return (int) $ok; 
+}
+
 
 
