@@ -315,7 +315,7 @@ function sp_save_survey_submission($survey_id, array $answers, $user_id = null) 
 }
 
 /**
- * Update survey_info fields (title/description/instructions)
+ * Update survey_info fields (title/description/instructions) and always bump updated_at.
  */
 function sp_update_survey_info_row($survey_id, $title, $description = null, $instructions = null) {
     global $wpdb;
@@ -332,9 +332,10 @@ function sp_update_survey_info_row($survey_id, $title, $description = null, $ins
     $update_status = $wpdb->update(
         $wpdb->prefix . 'survey_info',
         [
-            'title' => $title,
+            'title'              => $title,
             'survey_description' => $description,
-            'instructions' => $instructions
+            'instructions'       => $instructions,
+            'updated_at'         => current_time('mysql'),
         ],
         [
             'id' => $survey_id
@@ -342,7 +343,8 @@ function sp_update_survey_info_row($survey_id, $title, $description = null, $ins
         [
             '%s',
             '%s',
-            '%s'
+            '%s',
+            '%s',
         ],
         [
             '%d'
