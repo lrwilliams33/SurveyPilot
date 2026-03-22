@@ -31,14 +31,14 @@ add_action('admin_enqueue_scripts', function() {
         'survey-pilot-admin',
         SP_URL . 'assets/css/admin.css',
         [],
-        '1.4'
+        '1.5'
     );
 
     wp_enqueue_script(
         'survey-pilot-admin',
         SP_URL . 'assets/js/admin.js',
         [],
-        '1.4',
+        '1.5',
         true
     );
 
@@ -201,7 +201,8 @@ function sp_handle_duplicate_survey() {
                 $question['scale_min'],
                 $question['scale_max'],
                 $question['question_title'],
-                $question['scale_labels']
+                $question['scale_labels'],
+                isset($question['page_number']) ? (int) $question['page_number'] : 1
             );
         }
     }
@@ -226,6 +227,7 @@ function sp_save_survey_questions_from_post($survey_id) {
 
         $question_title = isset($question['title']) ? wp_unslash($question['title']) : null;
         $scale_rows = isset($question['scale']) && is_array($question['scale']) ? $question['scale'] : [];
+        $page_number = isset($question['page']) ? max(1, intval($question['page'])) : 1;
 
         $values = [];
         $labels = [];
@@ -265,7 +267,8 @@ function sp_save_survey_questions_from_post($survey_id) {
             $scale_min,
             $scale_max,
             $question_title,
-            $scale_labels
+            $scale_labels,
+            $page_number
         );
 
         $order++;

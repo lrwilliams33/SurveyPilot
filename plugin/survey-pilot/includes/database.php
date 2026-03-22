@@ -33,6 +33,7 @@ function add_tables(){
         scale_max TINYINT UNSIGNED NOT NULL,
         scale_labels LONGTEXT NULL,
         question_order INT UNSIGNED NOT NULL,
+        page_number TINYINT UNSIGNED NOT NULL DEFAULT 1,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY  (id)
     ) $charset_collate;";
@@ -135,7 +136,8 @@ function sp_add_survey_question_row(
     $scale_min = 1, 
     $scale_max = 5, 
     $question_title = null, 
-    $scale_labels = null
+    $scale_labels = null,
+    $page_number = 1
     ) 
     {
     global $wpdb;
@@ -147,6 +149,7 @@ function sp_add_survey_question_row(
     $scale_max = intval($scale_max);
     $scale_labels = ($scale_labels !== null && $scale_labels !== '') ? sanitize_textarea_field($scale_labels) : null;
     $question_order = intval($question_order);
+    $page_number = max(1, intval($page_number));
 
     if ($survey_id <= 0) {
         return new WP_Error('invalid_survey_id', 'Invalid survey ID provided');
@@ -173,7 +176,8 @@ function sp_add_survey_question_row(
             'scale_min' => $scale_min,
             'scale_max' => $scale_max,
             'scale_labels' => $scale_labels,
-            'question_order' => $question_order
+            'question_order' => $question_order,
+            'page_number' => $page_number,
         ],
         [
             '%d',
@@ -182,7 +186,8 @@ function sp_add_survey_question_row(
             '%d',
             '%d',
             '%s',
-            '%d'
+            '%d',
+            '%d',
         ]
     );
 
