@@ -33,3 +33,4 @@ require_once SP_PATH . 'includes/frontend.php';
 require_once SP_PATH . 'includes/survey-service.php';
 //require_once SP_PATH . 'includes/response-service.php';
 //require_once SP_PATH . 'includes/analytics-service.php';
+require_once SP_PATH . 'includes/email-settings.php';
