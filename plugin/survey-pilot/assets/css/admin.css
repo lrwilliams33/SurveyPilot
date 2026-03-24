@@ -493,8 +493,72 @@
     margin-top: 8px;
 }
 
-#sp-add-question {
+.sp-question-builder-actions {
+    display: flex;
+    gap: 12px;
     margin-top: 28px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.sp-question-builder-actions .button {
+    margin-top: 0 !important;
+}
+
+#sp-add-page-break:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    pointer-events: none;
+    color: #50575e !important;
+}
+
+.sp-page-break {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 20px 0 4px;
+}
+
+.sp-page-break-line {
+    flex: 1;
+    height: 2px;
+    background: #2271b1;
+    border-radius: 1px;
+}
+
+.sp-page-break-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #2271b1;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.sp-page-break-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: 5px;
+    border: 1px solid #b0bec5;
+    background: #fce8e8;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.sp-page-break-remove:hover,
+.sp-page-break-remove:focus {
+    background: #fad2d2;
+    border-color: #b32d2e;
+}
+
+.sp-page-break-remove .sp-trash-icon {
+    display: block;
+    object-fit: contain;
 }
 
 .sp-admin-page textarea.sp-question-textarea {

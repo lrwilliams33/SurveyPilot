@@ -179,6 +179,7 @@
 
     const questionsList = document.getElementById("sp-questions-list");
     const addQuestionBtn = document.getElementById("sp-add-question");
+    const addPageBreakBtn = document.getElementById("sp-add-page-break");
     const templateEl = document.getElementById("sp-question-template");
 
     if (!questionsList || !addQuestionBtn || !templateEl) return;
@@ -186,12 +187,65 @@
     let nextIndex = parseInt(builder.getAttribute("data-next-index") || "0", 10);
     if (Number.isNaN(nextIndex)) nextIndex = 0;
 
+    function cleanupPageBreaks() {
+      // If there are no questions at all, remove every page break
+      const hasQuestions = !!questionsList.querySelector(".sp-question-card");
+      if (!hasQuestions) {
+        questionsList.querySelectorAll(".sp-page-break").forEach((pb) => pb.remove());
+        return;
+      }
+
+      // Remove leading page breaks (page 1 would otherwise be empty)
+      let first = questionsList.firstElementChild;
+      while (first && first.classList.contains("sp-page-break")) {
+        first.remove();
+        first = questionsList.firstElementChild;
+      }
+
+      // Merge consecutive page breaks, keeping only the first of each run
+      let prev = null;
+      Array.from(questionsList.children).forEach((el) => {
+        if (
+          el.classList.contains("sp-page-break") &&
+          prev &&
+          prev.classList.contains("sp-page-break")
+        ) {
+          el.remove();
+          return; // prev stays pointing at the surviving page break
+        }
+        prev = el;
+      });
+    }
+
     function refreshQuestionNumbers() {
+      cleanupPageBreaks();
       const cards = Array.from(questionsList.querySelectorAll(".sp-question-card"));
       cards.forEach((card, idx) => {
         const numEl = card.querySelector(".sp-question-label .sp-question-number");
         if (numEl) numEl.textContent = String(idx + 1);
       });
+      refreshPageNumbers();
+      updateAddPageBreakBtn();
+    }
+
+    function refreshPageNumbers() {
+      let currentPage = 1;
+      Array.from(questionsList.children).forEach((el) => {
+        if (el.classList.contains("sp-page-break")) {
+          currentPage++;
+        } else if (el.classList.contains("sp-question-card")) {
+          const pageInput = el.querySelector(".sp-page-input");
+          if (pageInput) pageInput.value = currentPage;
+        }
+      });
+    }
+
+    function updateAddPageBreakBtn() {
+      if (!addPageBreakBtn) return;
+      const lastChild = questionsList.lastElementChild;
+      const isEmpty = !lastChild;
+      const isLastAPageBreak = lastChild && lastChild.classList.contains("sp-page-break");
+      addPageBreakBtn.disabled = isEmpty || isLastAPageBreak;
     }
 
     const trashIconUrl = document.getElementById("sp-trash-icon-url")?.getAttribute("data-src") || "";
@@ -255,6 +309,46 @@
       `;
       scaleContainer.appendChild(row);
       updateScaleRowTrash(card);
+    }
+
+    function attachPageBreakHandlers(pb) {
+      const removeBtn = pb.querySelector(".sp-page-break-remove");
+      if (removeBtn) {
+        removeBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          pb.remove();
+          refreshQuestionNumbers();
+        });
+      }
+    }
+
+    function addPageBreak() {
+      const lastChild = questionsList.lastElementChild;
+      if (!lastChild || lastChild.classList.contains("sp-page-break")) return;
+
+      const pb = document.createElement("div");
+      pb.className = "sp-page-break";
+      pb.innerHTML = `
+        <div class="sp-page-break-line"></div>
+        <span class="sp-page-break-label">Page Break</span>
+        <button type="button" class="button-link sp-page-break-remove" aria-label="Remove page break">
+          ${trashIconUrl
+            ? `<img src="${trashIconUrl}" alt="" class="sp-trash-icon" width="18" height="18">`
+            : `<span class="dashicons dashicons-trash"></span>`}
+        </button>
+        <div class="sp-page-break-line"></div>
+      `;
+      questionsList.appendChild(pb);
+      attachPageBreakHandlers(pb);
+      refreshPageNumbers();
+      updateAddPageBreakBtn();
+    }
+
+    if (addPageBreakBtn) {
+      addPageBreakBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        addPageBreak();
+      });
     }
 
     function attachQuestionHandlers(card) {
@@ -342,12 +436,16 @@
       addQuestion();
     });
 
-    // Existing questions rendered by PHP
+    // Existing questions and page breaks rendered by PHP
     questionsList.querySelectorAll(".sp-question-card").forEach((card) => {
       if (!card.getAttribute("data-question-index")) {
         card.setAttribute("data-question-index", String(nextIndex++));
       }
       attachQuestionHandlers(card);
+    });
+
+    questionsList.querySelectorAll(".sp-page-break").forEach((pb) => {
+      attachPageBreakHandlers(pb);
     });
 
     initAutoExpand(questionsList.querySelectorAll(".sp-auto-expand"));

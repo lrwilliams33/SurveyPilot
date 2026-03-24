@@ -66,10 +66,25 @@
 
         <div id="sp-question-builder" data-next-index="<?php echo esc_attr(count($questions)); ?>">
             <div id="sp-questions-list">
-                <?php if (!empty($questions)) : ?>
-                    <?php foreach ($questions as $index => $question) : ?>
-                        <?php
+                <?php if (!empty($questions)) :
+                    $prev_page = 1;
+                    foreach ($questions as $index => $question) :
                         $question_index = (int) $index;
+                        $current_page = isset($question['page_number']) ? max(1, (int) $question['page_number']) : 1;
+
+                        if ($current_page > $prev_page) :
+                            $prev_page = $current_page;
+                ?>
+                        <div class="sp-page-break">
+                            <div class="sp-page-break-line"></div>
+                            <span class="sp-page-break-label">Page Break</span>
+                            <button type="button" class="button-link sp-page-break-remove" aria-label="Remove page break">
+                                <img src="<?php echo esc_url(SP_URL . 'assets/images/trash-can.svg'); ?>" alt="" class="sp-trash-icon" width="18" height="18">
+                            </button>
+                            <div class="sp-page-break-line"></div>
+                        </div>
+                <?php   endif; ?>
+                        <?php
                         $scale_rows = [];
                         $min = max(1, (int) ($question['scale_min'] ?? 1));
                         $max = max($min, (int) ($question['scale_max'] ?? 5));
@@ -88,6 +103,7 @@
                         }
                         ?>
                         <div class="sp-question-card" data-question-index="<?php echo esc_attr($question_index); ?>">
+                            <input type="hidden" class="sp-page-input" name="sp_questions[<?php echo esc_attr($question_index); ?>][page]" value="<?php echo esc_attr($current_page); ?>">
                             <div class="sp-question-header">
                                 <span class="sp-question-label">Question <span class="sp-question-number"></span></span>
                                 <button type="button" class="button-link sp-question-remove" aria-label="Delete question">
@@ -130,10 +146,14 @@
                 <?php endif; ?>
             </div>
 
-            <button type="button" class="button sp-btn-large" id="sp-add-question">+ Add Question</button>
+            <div class="sp-question-builder-actions">
+                <button type="button" class="button sp-btn-large" id="sp-add-question">+ Add Question</button>
+                <button type="button" class="button sp-btn-large" id="sp-add-page-break" disabled>+ Add Page Break</button>
+            </div>
 
             <div id="sp-question-template" style="display:none;">
                 <div class="sp-question-card" data-question-index="__INDEX__">
+                    <input type="hidden" class="sp-page-input" name="sp_questions[__INDEX__][page]" value="1">
                     <div class="sp-question-header">
                         <span class="sp-question-label">Question <span class="sp-question-number"></span></span>
                         <button type="button" class="button-link sp-question-remove" aria-label="Delete question">
