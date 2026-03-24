@@ -24,16 +24,16 @@
 
         <table class="form-table">
             <tr>
-                <th><label for="sp_survey_title">Survey Title</label></th>
+                <th><label for="sp_survey_title">Survey Title<span class="sp-required" aria-hidden="true">*</span></label></th>
                 <td>
                     <input
                         type="text"
                         name="sp_survey_title"
                         id="sp_survey_title"
-                        required
                         class="regular-text"
                         value="<?php echo $is_edit ? esc_attr($survey['title']) : ''; ?>"
                     >
+                    <p id="sp-title-error" class="sp-field-error" style="display:none;">Please enter a survey title.</p>
                 </td>
             </tr>
 
@@ -111,21 +111,13 @@
                                 </button>
                             </div>
                             <div class="sp-question-body">
-                                <div class="sp-field sp-field-block">
-                                    <label>Question Title</label>
-                                    <input
-                                        type="text"
-                                        class="regular-text"
-                                        name="sp_questions[<?php echo esc_attr($question_index); ?>][title]"
-                                        value="<?php echo esc_attr($question['question_title']); ?>"
-                                    >
-                                </div>
                                 <div class="sp-field">
-                                    <label>Question Text</label>
+                                    <label>Question Text<span class="sp-required" aria-hidden="true">*</span></label>
                                     <textarea
                                         class="regular-text sp-question-textarea"
                                         name="sp_questions[<?php echo esc_attr($question_index); ?>][text]"
                                     ><?php echo esc_textarea($question['question_text']); ?></textarea>
+                                    <p class="sp-field-error sp-qtext-error" style="display:none;">Question text is required.</p>
                                 </div>
                                 <div class="sp-field">
                                     <label>Scale Options</label>
@@ -161,20 +153,13 @@
                         </button>
                     </div>
                     <div class="sp-question-body">
-                        <div class="sp-field sp-field-block">
-                            <label>Question Title</label>
-                            <input
-                                type="text"
-                                class="regular-text"
-                                name="sp_questions[__INDEX__][title]"
-                            >
-                        </div>
                         <div class="sp-field">
-                            <label>Question Text</label>
+                            <label>Question Text<span class="sp-required" aria-hidden="true">*</span></label>
                             <textarea
                                 class="regular-text sp-question-textarea"
                                 name="sp_questions[__INDEX__][text]"
                             ></textarea>
+                            <p class="sp-field-error sp-qtext-error" style="display:none;">Question text is required.</p>
                         </div>
                         <div class="sp-field">
                             <label>Scale Options</label>
@@ -193,6 +178,8 @@
                 </div>
             </div>
         </div>
+
+        <p id="sp-questions-error" class="sp-questions-error" style="display:none;">You must add at least one question before saving the survey.</p>
 
         <?php submit_button($submit_label, 'primary sp-btn-large'); ?>
     </form>
