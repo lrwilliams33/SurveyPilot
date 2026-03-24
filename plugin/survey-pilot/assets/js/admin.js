@@ -1,4 +1,133 @@
 (() => {
+  // Export modal
+  const exportModal      = document.getElementById("sp-export-modal");
+  const exportBtns       = document.querySelectorAll("[data-sp-export-survey-id]");
+
+  if (exportModal && exportBtns.length > 0) {
+    const exportOverlay      = exportModal.querySelector(".sp-modal-overlay");
+    const exportDialog       = exportModal.querySelector(".sp-modal-dialog");
+    const exportCancelBtn    = exportModal.querySelector("[data-sp-export-cancel]");
+    const exportDownloadBtn  = document.getElementById("sp-export-download-btn");
+    const exportSurveyName   = document.getElementById("sp-export-survey-name");
+    const exportNoResponses  = document.getElementById("sp-export-no-responses");
+
+    const downloadIconHtml = exportDownloadBtn?.querySelector("img")?.outerHTML ?? "";
+    let activeSurveyId = null;
+
+    function openExportModal(surveyId, surveyTitle, responseCount) {
+      activeSurveyId = surveyId;
+      if (exportSurveyName) exportSurveyName.textContent = surveyTitle || "this survey";
+
+      const hasResponses = responseCount > 0;
+      if (exportNoResponses) exportNoResponses.style.display = hasResponses ? "none" : "block";
+      if (exportDownloadBtn) {
+        exportDownloadBtn.disabled = !hasResponses;
+      }
+
+      exportModal.classList.add("is-open");
+      exportModal.setAttribute("aria-hidden", "false");
+      exportDialog?.focus?.();
+    }
+
+    function closeExportModal() {
+      exportModal.classList.remove("is-open");
+      exportModal.setAttribute("aria-hidden", "true");
+      activeSurveyId = null;
+    }
+
+    exportBtns.forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const id    = btn.getAttribute("data-sp-export-survey-id");
+        const title = btn.getAttribute("data-sp-survey-title") || "";
+        const count = parseInt(btn.getAttribute("data-sp-response-count") || "0", 10);
+        openExportModal(id, title, count);
+      });
+    });
+
+    let activeAbortController = null;
+    let exportCancelled = false;
+
+    function cancelExport() {
+      exportCancelled = true;
+      activeAbortController?.abort();
+      activeAbortController = null;
+      if (exportDownloadBtn) {
+        exportDownloadBtn.innerHTML = downloadIconHtml + " Download CSV";
+        exportDownloadBtn.disabled = false;
+        exportDownloadBtn.classList.remove("sp-btn-loading");
+      }
+    }
+
+    exportOverlay?.addEventListener("click", () => {
+      cancelExport();
+      closeExportModal();
+    });
+    exportCancelBtn?.addEventListener("click", (e) => {
+      e.preventDefault();
+      cancelExport();
+      closeExportModal();
+    });
+
+    exportDownloadBtn?.addEventListener("click", () => {
+      if (!activeSurveyId) return;
+      const resetBtn = () => {
+        exportDownloadBtn.innerHTML = downloadIconHtml + " Download CSV";
+        exportDownloadBtn.disabled = false;
+        exportDownloadBtn.classList.remove("sp-btn-loading");
+        activeAbortController = null;
+      };
+
+      exportCancelled = false;
+      activeAbortController = new AbortController();
+
+      exportDownloadBtn.disabled = true;
+      exportDownloadBtn.classList.add("sp-btn-loading");
+      exportDownloadBtn.innerHTML = "Preparing…";
+
+      const data = new FormData();
+      data.append("action",    "sp_export_survey_csv");
+      data.append("nonce",     spAdmin.exportNonce);
+      data.append("survey_id", activeSurveyId);
+
+      fetch(spAdmin.ajaxUrl, { method: "POST", body: data, signal: activeAbortController.signal })
+        .then((r) => r.json())
+        .then((res) => {
+          if (exportCancelled) return;
+          resetBtn();
+
+          if (!res.success) {
+            alert("Export failed: " + (res.data || "Unknown error"));
+            return;
+          }
+
+          const blob = new Blob([res.data.csv], { type: "text/csv;charset=utf-8;" });
+          const url  = URL.createObjectURL(blob);
+          const a    = document.createElement("a");
+          a.href     = url;
+          a.download = res.data.filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          closeExportModal();
+        })
+        .catch((err) => {
+          if (err.name === "AbortError" || exportCancelled) return;
+          resetBtn();
+          alert("Export failed. Please try again.");
+        });
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && exportModal.classList.contains("is-open")) {
+        cancelExport();
+        closeExportModal();
+      }
+    });
+  }
+
   // Delete confirmation modal
   const openButtons = document.querySelectorAll("[data-sp-delete-url]");
   const modal = document.getElementById("sp-delete-modal");
@@ -226,6 +355,11 @@
       });
       refreshPageNumbers();
       updateAddPageBreakBtn();
+      // Hide the "at least one question" error once a question exists
+      if (cards.length > 0) {
+        const questionsError = document.getElementById("sp-questions-error");
+        if (questionsError) questionsError.style.display = "none";
+      }
     }
 
     function refreshPageNumbers() {
@@ -250,6 +384,29 @@
 
     const trashIconUrl = document.getElementById("sp-trash-icon-url")?.getAttribute("data-src") || "";
 
+    function renumberScaleRows(card) {
+      const scaleContainer = card.querySelector(".sp-scale-rows");
+      if (!scaleContainer) return;
+      const questionIndex = card.getAttribute("data-question-index");
+      const rows = scaleContainer.querySelectorAll(".sp-scale-row");
+      rows.forEach((row, i) => {
+        const newVal = i + 1;
+        row.setAttribute("data-scale-value", String(newVal));
+        const hiddenInput = row.querySelector("input[type=hidden]");
+        if (hiddenInput) {
+          hiddenInput.value = newVal;
+          hiddenInput.name = `sp_questions[${questionIndex}][scale][${i}][value]`;
+        }
+        const numberInput = row.querySelector("input[type=number]");
+        if (numberInput) numberInput.value = newVal;
+        const textInput = row.querySelector('input[type="text"]');
+        if (textInput) {
+          textInput.name = `sp_questions[${questionIndex}][scale][${i}][label]`;
+          textInput.placeholder = `Label for ${newVal}`;
+        }
+      });
+    }
+
     function updateScaleRowTrash(card) {
       const scaleContainer = card.querySelector(".sp-scale-rows");
       if (!scaleContainer) return;
@@ -261,21 +418,22 @@
       const addScaleBtn = card.querySelector(".sp-add-scale");
       if (addScaleBtn) addScaleBtn.disabled = rows.length >= SP_SCALE_MAX;
       if (rows.length <= 1) return;
-      const lastRow = rows[rows.length - 1];
-      const questionIndex = card.getAttribute("data-question-index");
-      const removeBtn = document.createElement("button");
-      removeBtn.type = "button";
-      removeBtn.className = "button-link sp-scale-row-remove";
-      removeBtn.setAttribute("aria-label", "Remove this option");
-      removeBtn.innerHTML = trashIconUrl
-        ? `<img src="${trashIconUrl}" alt="" class="sp-trash-icon" width="20" height="20">`
-        : "<span class=\"dashicons dashicons-trash\"></span>";
-      removeBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        lastRow.remove();
-        updateScaleRowTrash(card);
+      rows.forEach((row) => {
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "button-link sp-scale-row-remove";
+        removeBtn.setAttribute("aria-label", "Remove this option");
+        removeBtn.innerHTML = trashIconUrl
+          ? `<img src="${trashIconUrl}" alt="" class="sp-trash-icon" width="20" height="20">`
+          : `<span class="dashicons dashicons-trash"></span>`;
+        removeBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          row.remove();
+          renumberScaleRows(card);
+          updateScaleRowTrash(card);
+        });
+        row.appendChild(removeBtn);
       });
-      lastRow.appendChild(removeBtn);
     }
 
     const SP_SCALE_MAX = 20;
@@ -368,6 +526,18 @@
           addScaleRow(card);
         });
       }
+
+      const qTextarea = card.querySelector(".sp-question-textarea");
+      const qTextError = card.querySelector(".sp-qtext-error");
+      if (qTextarea && qTextError) {
+        qTextarea.addEventListener("input", () => {
+          if (qTextarea.value.trim()) {
+            qTextError.style.display = "none";
+            qTextarea.classList.remove("sp-input-error");
+          }
+        });
+      }
+
       updateScaleRowTrash(card);
     }
 
@@ -450,6 +620,67 @@
 
     initAutoExpand(questionsList.querySelectorAll(".sp-auto-expand"));
     refreshQuestionNumbers();
+
+    // Require at least one question before the form can be submitted.
+    const form = builder.closest("form");
+    const questionsError = document.getElementById("sp-questions-error");
+    const titleInput = document.getElementById("sp_survey_title");
+    const titleError = document.getElementById("sp-title-error");
+
+    if (titleInput && titleError) {
+      titleInput.addEventListener("input", () => {
+        if (titleInput.value.trim()) {
+          titleError.style.display = "none";
+          titleInput.classList.remove("sp-input-error");
+        }
+      });
+    }
+
+    if (form && questionsError) {
+      form.addEventListener("submit", (e) => {
+        let blocked = false;
+
+        if (titleInput && !titleInput.value.trim()) {
+          e.preventDefault();
+          blocked = true;
+          titleError.style.display = "";
+          titleInput.classList.add("sp-input-error");
+          titleInput.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+
+        if (!questionsList.querySelector(".sp-question-card")) {
+          e.preventDefault();
+          blocked = true;
+          questionsError.style.display = "";
+          if (!titleInput || titleInput.value.trim()) {
+            questionsError.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        } else {
+          questionsError.style.display = "none";
+
+          let firstEmptyTextarea = null;
+          questionsList.querySelectorAll(".sp-question-card").forEach((card) => {
+            const ta = card.querySelector(".sp-question-textarea");
+            const err = card.querySelector(".sp-qtext-error");
+            if (ta && !ta.value.trim()) {
+              e.preventDefault();
+              blocked = true;
+              if (err) err.style.display = "";
+              ta.classList.add("sp-input-error");
+              if (!firstEmptyTextarea) firstEmptyTextarea = ta;
+            }
+          });
+
+          if (firstEmptyTextarea && !blocked) {
+            firstEmptyTextarea.scrollIntoView({ behavior: "smooth", block: "center" });
+          } else if (firstEmptyTextarea) {
+            if (!titleInput || titleInput.value.trim()) {
+              firstEmptyTextarea.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+          }
+        }
+      });
+    }
   }
 
   function initSortAndDrag() {

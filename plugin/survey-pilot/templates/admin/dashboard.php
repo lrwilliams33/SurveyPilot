@@ -3,6 +3,16 @@
 
 global $wpdb;
 $surveys = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}survey_info ORDER BY updated_at DESC", ARRAY_A);
+
+// Build a map of survey_id => response count in one query.
+$response_counts = [];
+$raw_counts = $wpdb->get_results(
+    "SELECT survey_id, COUNT(*) AS cnt FROM {$wpdb->prefix}survey_response_info GROUP BY survey_id",
+    ARRAY_A
+);
+foreach ($raw_counts as $rc) {
+    $response_counts[ (int) $rc['survey_id'] ] = (int) $rc['cnt'];
+}
 ?>
 
 <div class="wrap sp-dashboard">
@@ -75,6 +85,7 @@ $surveys = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}survey_info ORDER BY
                                 <div class="sp-survey-menu" role="menu">
                                     <a href="<?php echo esc_url($edit_url); ?>" class="sp-survey-menu-item" role="menuitem">Edit</a>
                                     <a href="<?php echo esc_url($duplicate_url); ?>" class="sp-survey-menu-item" role="menuitem">Duplicate</a>
+                                    <button type="button" class="sp-survey-menu-item sp-survey-menu-item-export" role="menuitem" data-sp-export-survey-id="<?php echo (int) $survey['id']; ?>" data-sp-survey-title="<?php echo esc_attr($survey['title']); ?>" data-sp-response-count="<?php echo (int) ($response_counts[ (int) $survey['id'] ] ?? 0); ?>">Export Responses</button>
                                     <a href="<?php echo esc_url($delete_url); ?>" data-sp-delete-url="<?php echo esc_url($delete_url); ?>" data-sp-survey-title="<?php echo esc_attr($survey['title']); ?>" class="sp-survey-menu-item sp-survey-menu-item-delete" role="menuitem">Delete</a>
                                 </div>
                             </div>
@@ -93,6 +104,20 @@ $surveys = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}survey_info ORDER BY
             <p class="sp-shortcode-block"><code>[survey_pilot name="My Survey"]</code></p>
             <p>Replace <code>My Survey</code> with the exact name of your survey. Each card shows the correct shortcode to copy.</p>
             <p class="sp-eg-line">e.g. a survey named <strong>Customer Feedback</strong> uses:<br><code>[survey_pilot name="Customer Feedback"]</code></p>
+        </div>
+    </div>
+</div>
+
+<div id="sp-export-modal" class="sp-modal" aria-hidden="true">
+    <div class="sp-modal-overlay" tabindex="-1"></div>
+    <div class="sp-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sp-export-modal-title" tabindex="-1">
+        <h2 id="sp-export-modal-title">Export Responses</h2>
+        <p>Download all responses for <strong id="sp-export-survey-name"></strong> as a CSV file.</p>
+        <p class="sp-export-description">The file will contain one row per submission with a column for each question and its answer value.</p>
+        <p id="sp-export-no-responses" class="sp-export-notice" style="display:none;">This survey has no responses yet.</p>
+        <div class="sp-modal-actions">
+            <a href="#" class="button sp-btn-large" data-sp-export-cancel>Cancel</a>
+            <button type="button" class="button button-primary sp-btn-large" id="sp-export-download-btn"><img src="<?php echo esc_url(SP_URL . 'assets/images/download-button.svg'); ?>" alt="" width="14" height="14" class="sp-download-icon"> Download CSV</button>
         </div>
     </div>
 </div>

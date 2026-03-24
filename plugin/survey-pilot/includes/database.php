@@ -27,14 +27,12 @@ function add_tables(){
     $sql_survey_questions = "CREATE TABLE $survey_questions (
         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
         survey_id BIGINT UNSIGNED NOT NULL,
-        question_title VARCHAR(255) NULL,
         question_text TEXT NOT NULL,
         scale_min TINYINT UNSIGNED NOT NULL,
         scale_max TINYINT UNSIGNED NOT NULL,
         scale_labels LONGTEXT NULL,
         question_order INT UNSIGNED NOT NULL,
         page_number TINYINT UNSIGNED NOT NULL DEFAULT 1,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY  (id)
     ) $charset_collate;";
 
@@ -135,7 +133,6 @@ function sp_add_survey_question_row(
     $question_order,
     $scale_min = 1, 
     $scale_max = 5, 
-    $question_title = null, 
     $scale_labels = null,
     $page_number = 1
     ) 
@@ -143,7 +140,6 @@ function sp_add_survey_question_row(
     global $wpdb;
 
     $survey_id = intval($survey_id);
-    $question_title = ($question_title !== null && $question_title !== '') ? sanitize_text_field($question_title) : null;
     $question_text = sanitize_textarea_field($question_text);
     $scale_min = intval($scale_min);
     $scale_max = intval($scale_max);
@@ -159,7 +155,7 @@ function sp_add_survey_question_row(
         return new WP_Error('empty_question_text', 'Question text cannot be empty');
     }
 
-    if ($scale_min < 1 || $scale_max < 1 || $scale_min >= $scale_max) {
+    if ($scale_min < 1 || $scale_max < 1 || $scale_min > $scale_max) {
         return new WP_Error('invalid_scale', 'Scale min and max values are invalid');
     }
 
@@ -171,7 +167,6 @@ function sp_add_survey_question_row(
         $wpdb->prefix . 'survey_questions',
         [
             'survey_id' => $survey_id,
-            'question_title' => $question_title,
             'question_text' => $question_text,
             'scale_min' => $scale_min,
             'scale_max' => $scale_max,
@@ -181,7 +176,6 @@ function sp_add_survey_question_row(
         ],
         [
             '%d',
-            '%s',
             '%s',
             '%d',
             '%d',

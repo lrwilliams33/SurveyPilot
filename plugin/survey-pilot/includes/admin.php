@@ -31,20 +31,21 @@ add_action('admin_enqueue_scripts', function() {
         'survey-pilot-admin',
         SP_URL . 'assets/css/admin.css',
         [],
-        '1.5'
+        '1.6'
     );
 
     wp_enqueue_script(
         'survey-pilot-admin',
         SP_URL . 'assets/js/admin.js',
         [],
-        '1.5',
+        '1.6',
         true
     );
 
     wp_localize_script('survey-pilot-admin', 'spAdmin', [
-        'ajaxUrl' => admin_url('admin-ajax.php'),
-        'nonce'   => wp_create_nonce('sp_save_survey_order'),
+        'ajaxUrl'       => admin_url('admin-ajax.php'),
+        'nonce'         => wp_create_nonce('sp_save_survey_order'),
+        'exportNonce'   => wp_create_nonce('sp_export_survey_csv'),
     ]);
 });
 
@@ -62,19 +63,152 @@ function sp_handle_save_survey_order() {
     global $wpdb;
     $order = isset($_POST['order']) ? (array) $_POST['order'] : [];
 
+    $survey_ids = array_values(array_filter(array_map('absint', $order)));
+    if (empty($survey_ids)) {
+        wp_send_json_success();
+        return;
+    }
+
+    // Fetch current updated_at values so reordering doesn't touch them.
+    $placeholders   = implode(',', array_fill(0, count($survey_ids), '%d'));
+    $existing_rows  = $wpdb->get_results(
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $wpdb->prepare(
+            "SELECT id, updated_at FROM {$wpdb->prefix}survey_info WHERE id IN ($placeholders)",
+            ...$survey_ids
+        ),
+        ARRAY_A
+    );
+    $updated_at_map = [];
+    foreach ($existing_rows as $row) {
+        $updated_at_map[ (int) $row['id'] ] = $row['updated_at'];
+    }
+
     foreach ($order as $position => $survey_id) {
         $survey_id = absint($survey_id);
         if (!$survey_id) continue;
         $wpdb->update(
             $wpdb->prefix . 'survey_info',
-            ['sort_order' => $position + 1],
-            ['id'         => $survey_id],
-            ['%d'],
+            [
+                'sort_order' => $position + 1,
+                'updated_at' => $updated_at_map[ $survey_id ] ?? current_time('mysql'),
+            ],
+            ['id' => $survey_id],
+            ['%d', '%s'],
             ['%d']
         );
     }
 
     wp_send_json_success();
+}
+
+// Handle CSV export via AJAX
+add_action('wp_ajax_sp_export_survey_csv', 'sp_handle_export_survey_csv');
+
+function sp_handle_export_survey_csv() {
+    if (!check_ajax_referer('sp_export_survey_csv', 'nonce', false)) {
+        wp_send_json_error('Invalid nonce');
+    }
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error('Unauthorized');
+    }
+
+    $survey_id = isset($_POST['survey_id']) ? absint($_POST['survey_id']) : 0;
+    if (!$survey_id) {
+        wp_send_json_error('Invalid survey ID');
+    }
+
+    global $wpdb;
+
+    $survey = $wpdb->get_row(
+        $wpdb->prepare("SELECT * FROM {$wpdb->prefix}survey_info WHERE id = %d", $survey_id),
+        ARRAY_A
+    );
+    if (!$survey) {
+        wp_send_json_error('Survey not found');
+    }
+
+    // Questions ordered as they appear in the survey.
+    $questions = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT id, question_text, question_order
+             FROM {$wpdb->prefix}survey_questions
+             WHERE survey_id = %d
+             ORDER BY question_order ASC",
+            $survey_id
+        ),
+        ARRAY_A
+    );
+
+    // All responses + answers in one query.
+    $raw = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT ri.id AS response_id, ri.user_id, ri.submitted_at,
+                    ra.question_id, ra.answer_value
+             FROM {$wpdb->prefix}survey_response_info ri
+             LEFT JOIN {$wpdb->prefix}survey_response_answers ra ON ri.id = ra.response_id
+             WHERE ri.survey_id = %d
+             ORDER BY ri.id ASC",
+            $survey_id
+        ),
+        ARRAY_A
+    );
+
+    // Group answers by response.
+    $responses = [];
+    foreach ($raw as $r) {
+        $rid = (int) $r['response_id'];
+        if (!isset($responses[$rid])) {
+            $responses[$rid] = [
+                'user_id'      => $r['user_id'],
+                'submitted_at' => $r['submitted_at'],
+                'answers'      => [],
+            ];
+        }
+        if ($r['question_id'] !== null) {
+            $responses[$rid]['answers'][ (int) $r['question_id'] ] = $r['answer_value'];
+        }
+    }
+
+    // Build CSV rows.
+    $rows   = [];
+    $header = ['Response ID', 'User ID', 'Submitted At'];
+    foreach ($questions as $q) {
+        $header[] = 'Q' . $q['question_order'] . ': ' . $q['question_text'];
+    }
+    $rows[] = $header;
+
+    foreach ($responses as $rid => $resp) {
+        $row   = [];
+        $row[] = $rid;
+        $row[] = $resp['user_id'] !== null ? $resp['user_id'] : 'Guest';
+        $row[] = $resp['submitted_at'];
+        foreach ($questions as $q) {
+            $row[] = $resp['answers'][ (int) $q['id'] ] ?? '';
+        }
+        $rows[] = $row;
+    }
+
+    // Serialize to CSV string.
+    $csv = '';
+    foreach ($rows as $row) {
+        $cells = array_map(function ( $cell ) {
+            $cell = (string) $cell;
+            $cell = str_replace('"', '""', $cell);
+            if ( strpbrk($cell, ",\"\n\r") !== false ) {
+                $cell = '"' . $cell . '"';
+            }
+            return $cell;
+        }, $row);
+        $csv .= implode(',', $cells) . "\r\n";
+    }
+
+    $filename = sanitize_file_name($survey['title']) . '_responses.csv';
+
+    wp_send_json_success([
+        'csv'      => $csv,
+        'filename' => $filename,
+    ]);
 }
 
 // Handle Create / Edit / Duplicate Survey Submission
@@ -96,10 +230,14 @@ function sp_handle_create_survey() {
         wp_die('Survey question creation function is missing.');
     }
 
+    if (empty($_POST['sp_questions']) || !is_array($_POST['sp_questions'])) {
+        wp_die('A survey must have at least one question.', 'Validation Error', ['back_link' => true]);
+    }
+
     // Create the survey
-    $survey_title = sanitize_text_field($_POST['sp_survey_title']);
-    $description = isset($_POST['sp_survey_description']) ? sanitize_textarea_field($_POST['sp_survey_description']) : null;
-    $instructions = isset($_POST['sp_survey_instructions']) ? sanitize_textarea_field($_POST['sp_survey_instructions']) : null;
+    $survey_title = sanitize_text_field(wp_unslash($_POST['sp_survey_title']));
+    $description = isset($_POST['sp_survey_description']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_description'])) : null;
+    $instructions = isset($_POST['sp_survey_instructions']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_instructions'])) : null;
     
     $survey_id = sp_add_survey_info_row($survey_title, $description, $instructions);
 
@@ -126,10 +264,14 @@ function sp_handle_edit_survey() {
         wp_die('Survey question function is missing.');
     }
 
+    if (empty($_POST['sp_questions']) || !is_array($_POST['sp_questions'])) {
+        wp_die('A survey must have at least one question.', 'Validation Error', ['back_link' => true]);
+    }
+
     $survey_id = intval($_POST['sp_survey_id']);
-    $survey_title = sanitize_text_field($_POST['sp_survey_title']);
-    $description = isset($_POST['sp_survey_description']) ? sanitize_textarea_field($_POST['sp_survey_description']) : null;
-    $instructions = isset($_POST['sp_survey_instructions']) ? sanitize_textarea_field($_POST['sp_survey_instructions']) : null;
+    $survey_title = sanitize_text_field(wp_unslash($_POST['sp_survey_title']));
+    $description = isset($_POST['sp_survey_description']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_description'])) : null;
+    $instructions = isset($_POST['sp_survey_instructions']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_instructions'])) : null;
 
     $update_result = sp_update_survey_info_row($survey_id, $survey_title, $description, $instructions);
 
@@ -200,7 +342,6 @@ function sp_handle_duplicate_survey() {
                 $question['question_order'],
                 $question['scale_min'],
                 $question['scale_max'],
-                $question['question_title'],
                 $question['scale_labels'],
                 isset($question['page_number']) ? (int) $question['page_number'] : 1
             );
@@ -225,7 +366,6 @@ function sp_save_survey_questions_from_post($survey_id) {
             continue;
         }
 
-        $question_title = isset($question['title']) ? wp_unslash($question['title']) : null;
         $scale_rows = isset($question['scale']) && is_array($question['scale']) ? $question['scale'] : [];
         $page_number = isset($question['page']) ? max(1, intval($question['page'])) : 1;
 
@@ -266,7 +406,6 @@ function sp_save_survey_questions_from_post($survey_id) {
             $order,
             $scale_min,
             $scale_max,
-            $question_title,
             $scale_labels,
             $page_number
         );

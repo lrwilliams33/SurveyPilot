@@ -105,7 +105,8 @@
     gap: 12px;
     margin-top: 0;
     margin-bottom: 16px;
-    padding-top: 0;
+    padding-top: 10px;
+    padding-bottom: 10px;
 }
 
 .sp-admin-header h1 {
@@ -379,35 +380,84 @@
 .sp-survey-menu-item:hover,
 .sp-survey-menu-item:focus {
     background: #f0f0f1;
+    color: #2271b1;
 }
 
 .sp-survey-menu-item-delete {
     color: #d63638;
 }
 
-.sp-survey-actions .button:not(.sp-btn-danger-outline),
-.sp-modal-actions .button:not(.sp-btn-danger-outline) {
+.sp-survey-menu-item-delete:hover,
+.sp-survey-menu-item-delete:focus {
+    color: #d63638;
+}
+
+.sp-export-description {
+    color: #50575e;
+    font-size: 16px !important;
+    margin-top: 6px !important;
+}
+
+#sp-export-download-btn:disabled {
+    opacity: 0.75;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+#sp-export-download-btn.sp-btn-loading {
+    opacity: 1;
+    cursor: wait;
+    pointer-events: none;
+}
+
+.sp-download-icon {
+    filter: invert(1);
+    vertical-align: middle;
+    margin-right: 4px;
+    margin-bottom: 2px;
+}
+
+#sp-export-download-btn:disabled .sp-download-icon {
+    filter: brightness(0) opacity(0.3);
+}
+
+.sp-export-notice {
+    color: #d63638;
+    font-size: 15px !important;
+    font-weight: 600;
+    margin-top: 8px !important;
+}
+
+.sp-survey-actions .button:not(.sp-btn-danger-outline):not(.button-primary),
+.sp-modal-actions .button:not(.sp-btn-danger-outline):not(.button-primary) {
     background: #fff !important;
 }
 
-.sp-survey-actions .button:not(.sp-btn-danger-outline):hover,
-.sp-survey-actions .button:not(.sp-btn-danger-outline):focus,
-.sp-modal-actions .button:not(.sp-btn-danger-outline):hover,
-.sp-modal-actions .button:not(.sp-btn-danger-outline):focus {
+.sp-survey-actions .button:not(.sp-btn-danger-outline):not(.button-primary):hover,
+.sp-survey-actions .button:not(.sp-btn-danger-outline):not(.button-primary):focus,
+.sp-modal-actions .button:not(.sp-btn-danger-outline):not(.button-primary):hover,
+.sp-modal-actions .button:not(.sp-btn-danger-outline):not(.button-primary):focus {
     background: #f0f0f1 !important;
 }
 
 .sp-btn-danger-outline {
     border-color: #d63638 !important;
-    color: #d63638 !important;
-    background: transparent !important;
+    color: #fff !important;
+    background: #d63638 !important;
 }
 
-.sp-btn-danger-outline:hover,
+.sp-btn-danger-outline:hover {
+    border-color: #bd3031 !important;
+    color: #fff !important;
+    background: #bd3031 !important;
+}
+
 .sp-btn-danger-outline:focus {
-    border-color: #b32d2e !important;
-    color: #b32d2e !important;
-    background: rgba(214, 54, 56, 0.06) !important;
+    border-color: #bd3031 !important;
+    color: #fff !important;
+    background: #bd3031 !important;
+    outline: none !important;
+    box-shadow: 0 0 0 1px #bd3031 !important;
 }
 
 .sp-dashboard-content {
@@ -430,8 +480,6 @@
     border-radius: 6px;
     line-height: 1.5;
     font-size: 20px;
-    max-height: 600px; /* optional: scroll if content too tall */
-    overflow-y: auto;
 }
 
 .sp-dashboard-right h2 {
@@ -452,7 +500,7 @@
 
 .sp-dashboard-right .sp-shortcode-block,
 .sp-dashboard-right .sp-eg-line {
-    margin-bottom: 30px;
+    margin-bottom: 22px;
 }
 
 .sp-dashboard-right ul {
@@ -468,6 +516,7 @@
 
 .sp-dashboard-right code {
     font-size: 18px;
+    padding: 3px 5px;
 }
 
 .sp-dashboard-right pre {
@@ -489,7 +538,7 @@
 }
 
 #sp-question-builder {
-    max-width: 50%;
+    max-width: 35%;
     margin-top: 8px;
 }
 
@@ -568,6 +617,7 @@
     overflow-y: auto;
     display: block;
     margin-top: 10px;
+    width: 75%;
 }
 
 .sp-question-card {
@@ -582,11 +632,12 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 10px;
+    margin-bottom: 6px;
 }
 
 .sp-question-label {
     font-weight: 600;
+    font-size: 18px;
 }
 
 .sp-question-remove {
@@ -750,12 +801,41 @@
     gap: 10px;
 }
 
+.sp-required {
+    color: #d63638;
+    margin-left: 2px;
+}
+
+.sp-field-error {
+    color: #d63638;
+    font-size: 13px;
+    font-weight: 600;
+    margin: 6px 0 0;
+    padding: 0;
+}
+
+.sp-input-error {
+    border-color: #d63638 !important;
+    box-shadow: 0 0 0 1px #d63638 !important;
+}
+
+.sp-questions-error {
+    color: #d63638;
+    font-size: 14px;
+    font-weight: 600;
+    margin: 28px 0 0 0;
+    padding: 10px 14px;
+    background: #fce8e8;
+    border: 1px solid #f5c6cb;
+    border-radius: 6px;
+}
+
 .sp-admin-page .form-table th,
 .sp-admin-page .form-table td,
 .sp-admin-page label,
 .sp-admin-page input,
 .sp-admin-page textarea {
-    font-size: 16px;
+    font-size: 18px;
 }
 
 .sp-admin-page .regular-text {
@@ -766,6 +846,10 @@
 .sp-admin-page .form-table td {
     padding-top: 6px;
     padding-bottom: 6px;
+}
+
+.sp-admin-page .form-table th {
+    width: 150px;
 }
 
 .sp-admin-page textarea.sp-fixed-textarea {
