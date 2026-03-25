@@ -81,7 +81,14 @@ add_shortcode('survey_pilot', 'sp_render_survey');
 //we are submitting to admin-post.php in user-survey-page.php, so we need to handle the form submission in this function
 add_action('admin_post_sp_submit_survey', 'sp_handle_submit_survey');
 
+add_action('wp_mail_failed', function ($wp_error) {
+    error_log('SP: wp_mail_failed fired');
+    error_log('SP: error message=' . $wp_error->get_error_message());
+    error_log('SP: error data=' . print_r($wp_error->get_error_data(), true));
+});
+
 function sp_handle_submit_survey() {
+    error_log('Submission handling started');
     //check to make sure the nonce token is valid, no attacker is submitting the form
     if (!isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'sp_submit_survey')) {
         wp_die('Security check failed');
@@ -114,13 +121,16 @@ function sp_handle_submit_survey() {
     }
 
     $user_id = get_current_user_id();
+    //post the survey responses to the respective database tables
     $response_id = sp_save_survey_submission($survey_id, $clean_answers, $user_id);
+    //send the survey response email to the user
+    sp_send_survey_email($response_id, $survey_id, $user_id);
 
     if (is_wp_error($response_id)) {
         wp_die($response_id->get_error_message());
     }
 
-
+    //after saving the survey response and sending the email, redirect the user to the confirmation page
     $redirect = wp_get_referer();
 
     if (!$redirect) {
@@ -133,4 +143,87 @@ function sp_handle_submit_survey() {
     ], $redirect));
 
 exit;
+}
+
+//send email to the user function
+function sp_send_survey_email($response_id, $survey_id, $user_id) {
+    global $wpdb;
+    error_log('Email function started');
+
+    //use get_userdata to access wp_users table and fetch email of user id
+    $user = get_userdata($user_id);
+
+    if (!$user) {
+        return;
+    }
+    
+    $user_email = $user->user_email;
+
+    $survey_table = $wpdb->prefix . 'survey_info';
+    $questions_table = $wpdb->prefix . 'survey_questions';
+    $answers_table = $wpdb->prefix . 'survey_response_answers';
+
+    //get the survey title for the survey submitted
+    $survey = $wpdb->get_row(
+        $wpdb->prepare(
+            "SELECT title FROM $survey_table WHERE id = %d",
+            $survey_id
+        )
+    );
+
+    $survey_title = $survey ? $survey->title : 'Survey';
+
+    //get questions and answers for the submitted survey response
+    //join the answers and questions table and fetch information using the response id 
+    $results = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT q.question_text, q.scale_labels, a.answer_value
+             FROM $answers_table a
+             JOIN $questions_table q
+             ON a.question_id = q.id
+             WHERE a.response_id = %d
+             ORDER BY q.question_order ASC",
+            $response_id
+        )
+    );
+
+
+    //generate email content with the survey title, questions and answers in a table format  
+    $message = '<h2>Survey Report</h2>';
+    $message .= '<p>Thank you for completing the survey: <strong>' . esc_html($survey_title) . '</strong></p>';
+
+    $message .= '<table style="border-collapse:collapse;width:100%;">';
+    $message .= '<tr>
+                    <th style="border:1px solid #ccc;padding:8px;text-align:left;">Question</th>
+                    <th style="border:1px solid #ccc;padding:8px;text-align:left;">Answer</th>
+                </tr>';
+
+    //for each question and answer, we need to check if the question has scale labels
+    //if it does we need to convert the answer value to the corresponding label before displaying in the email        
+    foreach ($results as $row) {
+
+        $labels = json_decode($row->scale_labels, true);
+
+        $answer_text = $row->answer_value;
+
+        if (isset($labels[$row->answer_value])) {
+            $answer_text = $labels[$row->answer_value];
+        }
+
+        $message .= '<tr>';
+        $message .= '<td style="border:1px solid #ccc;padding:8px;">' . esc_html($row->question_text) . '</td>';
+        $message .= '<td style="border:1px solid #ccc;padding:8px;">' . esc_html($answer_text) . '</td>';
+        $message .= '</tr>';
+    }
+
+    $message .= '</table>';
+
+    $subject = 'Your Survey Submission: ' . $survey_title;
+
+    $headers = ['Content-Type: text/html; charset=UTF-8'];
+
+    error_log('SP: sending to email=' . $user_email);
+    error_log('SP: about to call wp_mail');
+    $sent = wp_mail($user_email, $subject, $message, $headers);
+    error_log('SP: wp_mail sent: ' . ($sent ? 'true' : 'false'));
 }
