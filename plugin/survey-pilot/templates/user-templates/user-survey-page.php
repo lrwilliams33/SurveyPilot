@@ -350,6 +350,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
             
+            // Clear session storage before submitting
+            sessionStorage.removeItem('sp_survey_data_' + <?php echo (int) $sp_survey_id; ?>);
+            
             form.submit();
         });
     }
