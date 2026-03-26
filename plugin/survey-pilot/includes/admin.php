@@ -2,7 +2,7 @@
 
 add_action('admin_menu', function() {
     add_menu_page(
-        'SurveyPilot Dashboard',
+        'SurveyPilot',
         'SurveyPilot',
         'manage_options',
         'survey-pilot',
@@ -11,6 +11,17 @@ add_action('admin_menu', function() {
         6
     );
 
+    // Override the auto-generated duplicate submenu entry with the "Dashboard" label.
+    add_submenu_page(
+        'survey-pilot',
+        'Dashboard',
+        'Dashboard',
+        'manage_options',
+        'survey-pilot',
+        'sp_render_dashboard'
+    );
+
+    // Hidden page — accessible via Edit/Create buttons, not the sidebar.
     add_submenu_page(
         null,
         'Create Survey',
