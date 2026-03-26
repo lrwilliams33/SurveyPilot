@@ -32,7 +32,6 @@ foreach ($questions as $q) {
     $pages[$page_num][] = $q;
 }
 
-// Sort pages by page number
 ksort($pages);
 
 // Get current page from query parameter or POST, default to first page
@@ -148,6 +147,8 @@ if (!empty($current_group)) {
                                     type="radio"
                                     name="sp_answers[<?php echo $question_id; ?>]"
                                     value="<?php echo $i; ?>"
+                                    data-page-number="<?php echo (int) $q['page_number']; ?>"
+                                    data-question-order="<?php echo (int) $q['question_order']; ?>"
                                     required
                                 >
                             </td>
@@ -197,7 +198,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const totalPages = <?php echo (int) $total_pages; ?>;
     const currentPage = <?php echo (int) $current_page; ?>;
 
-    // Helper function to save form data to sessionStorage
+    // Helper function to save form data to sessionStorage with page/order metadata
     function saveFormData() {
         const formData = new FormData(form);
         const data = {};
@@ -206,7 +207,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 data[key] = value;
             }
         });
-        sessionStorage.setItem('sp_survey_data_' + <?php echo (int) $sp_survey_id; ?>, JSON.stringify(data));
+        
+        const saved = sessionStorage.getItem('sp_survey_data_' + <?php echo (int) $sp_survey_id; ?>);
+        const existing = saved ? JSON.parse(saved) : {};
+        
+        for (const key in data) {
+            const radios = form.querySelectorAll('[name="' + key + '"]');
+            if (radios.length > 0) {
+                const firstRadio = radios[0];
+                existing[key] = {
+                    value: data[key],
+                    pageNumber: parseInt(firstRadio.dataset.pageNumber) || 1,
+                    questionOrder: parseInt(firstRadio.dataset.questionOrder) || 0
+                };
+            }
+        }
+        sessionStorage.setItem('sp_survey_data_' + <?php echo (int) $sp_survey_id; ?>, JSON.stringify(existing));
     }
 
     // Helper function to restore form data from sessionStorage
@@ -215,9 +231,14 @@ document.addEventListener('DOMContentLoaded', function() {
         if (saved) {
             const data = JSON.parse(saved);
             for (const key in data) {
-                const field = form.querySelector('[name="' + key + '"]');
-                if (field) {
-                    field.checked = true;
+                const radios = form.querySelectorAll('[name="' + key + '"]');
+                if (radios.length > 0) {
+                    const value = typeof data[key] === 'object' ? data[key].value : data[key];
+                    radios.forEach(radio => {
+                        if (radio.value === value.toString()) {
+                            radio.checked = true;
+                        }
+                    });
                 }
             }
         }
@@ -268,7 +289,67 @@ document.addEventListener('DOMContentLoaded', function() {
     if (submitBtn) {
         submitBtn.addEventListener('click', function(e) {
             e.preventDefault();
+            
+            const requiredFields = form.querySelectorAll('input[type="radio"][required]');
+            let allAnswered = true;
+            
+            const questionGroups = {};
+            requiredFields.forEach(field => {
+                const questionName = field.name;
+                if (!questionGroups[questionName]) {
+                    questionGroups[questionName] = [];
+                }
+                questionGroups[questionName].push(field);
+            });
+
+            for (const questionName in questionGroups) {
+                const isAnswered = questionGroups[questionName].some(field => field.checked);
+                if (!isAnswered) {
+                    allAnswered = false;
+                    break;
+                }
+            }
+
+            if (!allAnswered) {
+                alert('Please answer all questions on this page before submitting.');
+                return;
+            }
+
             saveFormData();
+            
+            // Restore all previous pages' answers and add them as hidden fields, sorted by page and order
+            const saved = sessionStorage.getItem('sp_survey_data_' + <?php echo (int) $sp_survey_id; ?>);
+            if (saved) {
+                const data = JSON.parse(saved);
+                const entries = Object.entries(data).map(([key, val]) => ({
+                    key: key,
+                    value: typeof val === 'object' ? val.value : val,
+                    pageNumber: typeof val === 'object' ? val.pageNumber : 1,
+                    questionOrder: typeof val === 'object' ? val.questionOrder : 0
+                }));
+                
+                entries.sort((a, b) => {
+                    if (a.pageNumber !== b.pageNumber) {
+                        return a.pageNumber - b.pageNumber;
+                    }
+                    return a.questionOrder - b.questionOrder;
+                });
+                
+                const firstTable = form.querySelector('.sp-table-wrapper');
+                
+                for (const entry of entries) {
+                    const hasOnCurrentPage = form.querySelector('input[name="' + entry.key + '"]') !== null;
+                    
+                    if (!hasOnCurrentPage) {
+                        const hiddenInput = document.createElement('input');
+                        hiddenInput.type = 'hidden';
+                        hiddenInput.name = entry.key;
+                        hiddenInput.value = entry.value;
+                        firstTable.parentElement.insertBefore(hiddenInput, firstTable);
+                    }
+                }
+            }
+            
             form.submit();
         });
     }
