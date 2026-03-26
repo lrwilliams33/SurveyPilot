@@ -101,6 +101,13 @@ function sp_handle_submit_survey() {
         wp_die('Invalid survey ID');
     }
 
+    // Merge session-stored answers with form submission answers
+    // Session answers are from previous pages
+    $session_key = 'sp_survey_answers_' . $survey_id;
+    if (isset($_SESSION[$session_key]) && is_array($_SESSION[$session_key])) {
+        $answers = array_merge($_SESSION[$session_key], $answers);
+    }
+
     if (empty($answers)) {
         wp_die('No answers submitted');
     }
@@ -116,6 +123,8 @@ function sp_handle_submit_survey() {
         }
     }
 
+    ksort($clean_answers, SORT_NUMERIC);
+
     if(!is_user_logged_in()) {
         wp_die('You must be logged in to submit the survey.');
     }
@@ -123,12 +132,14 @@ function sp_handle_submit_survey() {
     $user_id = get_current_user_id();
     //post the survey responses to the respective database tables
     $response_id = sp_save_survey_submission($survey_id, $clean_answers, $user_id);
-    //send the survey response email to the user
-    sp_send_survey_email($response_id, $survey_id, $user_id);
 
     if (is_wp_error($response_id)) {
-        wp_die($response_id->get_error_message());
+        error_log('SP: Error saving survey submission: ' . $response_id->get_error_message());
+        wp_die('Error submitting survey: ' . $response_id->get_error_message());
     }
+
+    //send the survey response email to the user
+    sp_send_survey_email($response_id, $survey_id, $user_id);
 
     //after saving the survey response and sending the email, redirect the user to the confirmation page
     $redirect = wp_get_referer();
@@ -136,6 +147,10 @@ function sp_handle_submit_survey() {
     if (!$redirect) {
         $redirect = home_url('/');
     }
+
+    // Clear session data for this survey
+    $session_key = 'sp_survey_answers_' . $survey_id;
+    unset($_SESSION[$session_key]);
 
     wp_safe_redirect(add_query_arg([
         'sp_survey_id' => $survey_id,
@@ -227,3 +242,45 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
     $sent = wp_mail($user_email, $subject, $message, $headers);
     error_log('SP: wp_mail sent: ' . ($sent ? 'true' : 'false'));
 }
+
+/**
+ * AJAX handler to save individual survey answers to session
+ * Called via AJAX when each radio button is selected
+ */
+function sp_save_answer_ajax() {
+    // Verify nonce for security (only for authenticated users)
+    if (is_user_logged_in()) {
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'sp_submit_survey')) {
+            error_log('SP AJAX: Nonce verification failed for logged-in user');
+            wp_send_json_error('Security check failed');
+        }
+    }
+
+    // Get and validate parameters
+    $survey_id = isset($_POST['survey_id']) ? absint($_POST['survey_id']) : 0;
+    $question_id = isset($_POST['question_id']) ? absint($_POST['question_id']) : 0;
+    $answer_value = isset($_POST['answer_value']) ? absint($_POST['answer_value']) : 0;
+
+    error_log('SP AJAX: survey_id=' . $survey_id . ', question_id=' . $question_id . ', answer_value=' . $answer_value);
+
+    if ($survey_id <= 0 || $question_id <= 0 || $answer_value < 0) {
+        wp_send_json_error('Invalid parameters');
+    }
+
+    // Initialize session storage array if it doesn't exist
+    $session_key = 'sp_survey_answers_' . $survey_id;
+    if (!isset($_SESSION[$session_key])) {
+        $_SESSION[$session_key] = [];
+    }
+
+    // Save the answer to session
+    $_SESSION[$session_key][$question_id] = $answer_value;
+
+    error_log('SP AJAX: Answer saved. Session data: ' . print_r($_SESSION[$session_key], true));
+
+    wp_send_json_success('Answer saved');
+}
+
+// Register AJAX action for both logged in and logged out users
+add_action('wp_ajax_sp_save_answer', 'sp_save_answer_ajax');
+add_action('wp_ajax_nopriv_sp_save_answer', 'sp_save_answer_ajax');

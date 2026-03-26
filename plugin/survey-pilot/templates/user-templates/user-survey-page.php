@@ -190,171 +190,187 @@ if (!empty($current_group)) {
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const form = document.querySelector('.sp-survey-form');
-    const prevBtn = document.querySelector('.sp-prev-btn');
-    const nextBtn = document.querySelector('.sp-next-btn');
-    const submitBtn = form.querySelector('button[type="submit"]');
-    const totalPages = <?php echo (int) $total_pages; ?>;
-    const currentPage = <?php echo (int) $current_page; ?>;
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.querySelector('.sp-survey-form');
+        if (!form) return;
 
-    // Helper function to save form data to sessionStorage with page/order metadata
-    function saveFormData() {
-        const formData = new FormData(form);
-        const data = {};
-        formData.forEach((value, key) => {
-            if (key.startsWith('sp_answers')) {
-                data[key] = value;
+        const prevBtn = document.querySelector('.sp-prev-btn');
+        const nextBtn = document.querySelector('.sp-next-btn');
+        const submitBtn = form.querySelector('button[type="submit"]');
+        const surveyId = <?php echo (int) $sp_survey_id; ?>;
+
+        const STORAGE_KEY = 'sp_survey_answers_' + surveyId;
+        const EXPIRY_KEY = 'sp_survey_answers_expiry_' + surveyId;
+        const EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+        function now() {
+            return Date.now();
+        }
+
+        function isExpired() {
+            const expiry = parseInt(localStorage.getItem(EXPIRY_KEY), 10);
+            return !expiry || now() > expiry;
+        }
+
+        function clearSavedAnswers() {
+            localStorage.removeItem(STORAGE_KEY);
+            localStorage.removeItem(EXPIRY_KEY);
+        }
+
+        function getSavedAnswers() {
+            if (isExpired()) {
+                clearSavedAnswers();
+                return {};
             }
-        });
-        
-        const saved = sessionStorage.getItem('sp_survey_data_' + <?php echo (int) $sp_survey_id; ?>);
-        const existing = saved ? JSON.parse(saved) : {};
-        
-        for (const key in data) {
-            const radios = form.querySelectorAll('[name="' + key + '"]');
-            if (radios.length > 0) {
-                const firstRadio = radios[0];
-                existing[key] = {
-                    value: data[key],
-                    pageNumber: parseInt(firstRadio.dataset.pageNumber) || 1,
-                    questionOrder: parseInt(firstRadio.dataset.questionOrder) || 0
-                };
+
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                return raw ? JSON.parse(raw) : {};
+            } catch (e) {
+                console.error('Could not parse saved survey answers:', e);
+                clearSavedAnswers();
+                return {};
             }
         }
-        sessionStorage.setItem('sp_survey_data_' + <?php echo (int) $sp_survey_id; ?>, JSON.stringify(existing));
-    }
 
-    // Helper function to restore form data from sessionStorage
-    function restoreFormData() {
-        const saved = sessionStorage.getItem('sp_survey_data_' + <?php echo (int) $sp_survey_id; ?>);
-        if (saved) {
-            const data = JSON.parse(saved);
-            for (const key in data) {
-                const radios = form.querySelectorAll('[name="' + key + '"]');
-                if (radios.length > 0) {
-                    const value = typeof data[key] === 'object' ? data[key].value : data[key];
-                    radios.forEach(radio => {
-                        if (radio.value === value.toString()) {
-                            radio.checked = true;
-                        }
-                    });
+        function saveAllAnswers(answers) {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(answers));
+                localStorage.setItem(EXPIRY_KEY, String(now() + EXPIRY_MS));
+            } catch (e) {
+                console.error('Could not save survey answers:', e);
+            }
+        }
+
+        function saveSingleAnswer(questionId, answerValue) {
+            const answers = getSavedAnswers();
+            answers[String(questionId)] = String(answerValue);
+            saveAllAnswers(answers);
+        }
+
+        function restoreAnswersToPage() {
+            const answers = getSavedAnswers();
+            const radios = form.querySelectorAll('input[type="radio"][name*="sp_answers"]');
+
+            radios.forEach(radio => {
+                const match = radio.name.match(/\[(\d+)\]/);
+                if (!match) return;
+
+                const questionId = match[1];
+                if (
+                    Object.prototype.hasOwnProperty.call(answers, questionId) &&
+                    String(answers[questionId]) === String(radio.value)
+                ) {
+                    radio.checked = true;
                 }
-            }
+            });
         }
-    }
 
-    restoreFormData();
+        function getCurrentPageAnswers() {
+            const answers = {};
+            const checkedRadios = form.querySelectorAll('input[type="radio"][name*="sp_answers"]:checked');
 
-    if (prevBtn) {
-        prevBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            saveFormData();
-            window.location.href = prevBtn.getAttribute('data-href');
-        });
-    }
+            checkedRadios.forEach(radio => {
+                const match = radio.name.match(/\[(\d+)\]/);
+                if (!match) return;
 
-    if (nextBtn) {
-        nextBtn.addEventListener('click', function(e) {
-            e.preventDefault();
+                const questionId = match[1];
+                answers[questionId] = radio.value;
+            });
+
+            return answers;
+        }
+
+        function syncCurrentPageAnswersToStorage() {
+            const storedAnswers = getSavedAnswers();
+            const currentPageAnswers = getCurrentPageAnswers();
+            const mergedAnswers = { ...storedAnswers, ...currentPageAnswers };
+            saveAllAnswers(mergedAnswers);
+        }
+
+        function allQuestionsOnPageAnswered() {
             const requiredFields = form.querySelectorAll('input[type="radio"][required]');
-            let allAnswered = true;
-            
             const questionGroups = {};
+
             requiredFields.forEach(field => {
-                const questionName = field.name;
-                if (!questionGroups[questionName]) {
-                    questionGroups[questionName] = [];
+                if (!questionGroups[field.name]) {
+                    questionGroups[field.name] = [];
                 }
-                questionGroups[questionName].push(field);
+                questionGroups[field.name].push(field);
             });
 
             for (const questionName in questionGroups) {
                 const isAnswered = questionGroups[questionName].some(field => field.checked);
                 if (!isAnswered) {
-                    allAnswered = false;
-                    break;
+                    return false;
                 }
             }
 
-            if (allAnswered) {
-                saveFormData();
+            return true;
+        }
+
+        restoreAnswersToPage();
+
+        const allRadios = form.querySelectorAll('input[type="radio"][name*="sp_answers"]');
+        allRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                const match = this.name.match(/\[(\d+)\]/);
+                if (!match) return;
+
+                const questionId = match[1];
+                saveSingleAnswer(questionId, this.value);
+            });
+        });
+
+        if (prevBtn) {
+            prevBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                syncCurrentPageAnswersToStorage();
+                window.location.href = prevBtn.getAttribute('data-href');
+            });
+        }
+
+        if (nextBtn) {
+            nextBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+
+                if (!allQuestionsOnPageAnswered()) {
+                    alert('Please answer all questions on this page before proceeding.');
+                    return;
+                }
+
+                syncCurrentPageAnswersToStorage();
                 window.location.href = nextBtn.getAttribute('data-href');
-            } else {
-                alert('Please answer all questions on this page before proceeding.');
-            }
-        });
-    }
-
-    if (submitBtn) {
-        submitBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            
-            const requiredFields = form.querySelectorAll('input[type="radio"][required]');
-            let allAnswered = true;
-            
-            const questionGroups = {};
-            requiredFields.forEach(field => {
-                const questionName = field.name;
-                if (!questionGroups[questionName]) {
-                    questionGroups[questionName] = [];
-                }
-                questionGroups[questionName].push(field);
             });
+        }
 
-            for (const questionName in questionGroups) {
-                const isAnswered = questionGroups[questionName].some(field => field.checked);
-                if (!isAnswered) {
-                    allAnswered = false;
-                    break;
+        if (submitBtn) {
+            submitBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+
+                if (!allQuestionsOnPageAnswered()) {
+                    alert('Please answer all questions on this page before submitting.');
+                    return;
                 }
-            }
 
-            if (!allAnswered) {
-                alert('Please answer all questions on this page before submitting.');
-                return;
-            }
+                syncCurrentPageAnswersToStorage();
 
-            saveFormData();
-            
-            // Restore all previous pages' answers and add them as hidden fields, sorted by page and order
-            const saved = sessionStorage.getItem('sp_survey_data_' + <?php echo (int) $sp_survey_id; ?>);
-            if (saved) {
-                const data = JSON.parse(saved);
-                const entries = Object.entries(data).map(([key, val]) => ({
-                    key: key,
-                    value: typeof val === 'object' ? val.value : val,
-                    pageNumber: typeof val === 'object' ? val.pageNumber : 1,
-                    questionOrder: typeof val === 'object' ? val.questionOrder : 0
-                }));
-                
-                entries.sort((a, b) => {
-                    if (a.pageNumber !== b.pageNumber) {
-                        return a.pageNumber - b.pageNumber;
-                    }
-                    return a.questionOrder - b.questionOrder;
-                });
-                
-                const firstTable = form.querySelector('.sp-table-wrapper');
-                
-                for (const entry of entries) {
-                    const hasOnCurrentPage = form.querySelector('input[name="' + entry.key + '"]') !== null;
-                    
-                    if (!hasOnCurrentPage) {
+                const savedAnswers = getSavedAnswers();
+
+                form.querySelectorAll('input[type="hidden"][name*="sp_answers"]').forEach(h => h.remove());
+
+                Object.entries(savedAnswers)
+                    .sort((a, b) => Number(a[0]) - Number(b[0]))
+                    .forEach(([questionId, answerValue]) => {
                         const hiddenInput = document.createElement('input');
                         hiddenInput.type = 'hidden';
-                        hiddenInput.name = entry.key;
-                        hiddenInput.value = entry.value;
-                        firstTable.parentElement.insertBefore(hiddenInput, firstTable);
-                    }
-                }
-            }
-            
-            // Clear session storage before submitting
-            sessionStorage.removeItem('sp_survey_data_' + <?php echo (int) $sp_survey_id; ?>);
-            
-            form.submit();
-        });
-    }
-});
+                        hiddenInput.name = 'sp_answers[' + questionId + ']';
+                        hiddenInput.value = answerValue;
+                        form.appendChild(hiddenInput);
+                    });
+
+                form.submit();
+            });
+        }
+    });
 </script>
