@@ -17,12 +17,12 @@ add_action('admin_init', function () {
     register_setting('sp_email_settings', 'sp_smtp_pass');
 });
 
-//This creates a menu item dropdown under Settings called SurveyPilot Email
+//This creates a menu item dropdown under Settings called Email Settings
 add_action('admin_menu', function () {
     add_submenu_page(
         'survey-pilot',
-        'SurveyPilot Email Settings',
-        'SurveyPilot Email Settings',
+        'Email Settings',
+        'Email Settings',
         'manage_options',
         'sp-email-settings',
         //This is the callback function that will render the email settings page when the menu item is clicked
