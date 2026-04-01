@@ -22,3 +22,11 @@ $start_url = esc_url(add_query_arg(['sp_step' => 'start', 'sp_survey_id' => (int
     </div>
 
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const surveyId = <?php echo (int) $sp_survey_id; ?>;
+    localStorage.removeItem('sp_survey_answers_' + surveyId);
+    localStorage.removeItem('sp_survey_answers_expiry_' + surveyId);
+});
+</script>

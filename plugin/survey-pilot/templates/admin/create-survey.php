@@ -21,6 +21,8 @@
         <?php if ($is_edit) : ?>
             <input type="hidden" name="sp_survey_id" value="<?php echo intval($survey['id']); ?>">
         <?php endif; ?>
+        <input type="hidden" id="sp_survey_exclude_id" value="<?php echo $is_edit ? intval($survey['id']) : 0; ?>">
+        <input type="hidden" id="sp_survey_original_title" value="<?php echo $is_edit ? esc_attr($survey['title']) : ''; ?>">
 
         <table class="form-table">
             <tr>
@@ -64,6 +66,28 @@
         <p class="description">Add Likert scale questions for this survey.</p>
         <span id="sp-trash-icon-url" data-src="<?php echo esc_url(SP_URL . 'assets/images/trash-can.svg'); ?>" aria-hidden="true" style="display:none;"></span>
 
+        <?php
+        $page_headers_decoded = [];
+        if ($is_edit && !empty($survey['page_headers'])) {
+            $decoded_ph = json_decode($survey['page_headers'], true);
+            if (is_array($decoded_ph)) {
+                $page_headers_decoded = $decoded_ph;
+            }
+        }
+        $page1_header_value = isset($page_headers_decoded[1]) ? $page_headers_decoded[1] : '';
+        ?>
+
+        <div class="sp-page-header-field" id="sp-page-1-header">
+            <label class="sp-page-header-label">Page <span class="sp-page-number-display">1</span> Header</label>
+            <input
+                type="text"
+                class="regular-text sp-page-header-input"
+                name="sp_page_headers[1]"
+                value="<?php echo esc_attr($page1_header_value); ?>"
+                placeholder="Optional page header…"
+            >
+        </div>
+
         <div id="sp-question-builder" data-next-index="<?php echo esc_attr(count($questions)); ?>">
             <div id="sp-questions-list">
                 <?php if (!empty($questions)) :
@@ -74,14 +98,27 @@
 
                         if ($current_page > $prev_page) :
                             $prev_page = $current_page;
+                            $ph_value = isset($page_headers_decoded[$current_page]) ? $page_headers_decoded[$current_page] : '';
                 ?>
                         <div class="sp-page-break">
-                            <div class="sp-page-break-line"></div>
-                            <span class="sp-page-break-label">Page Break</span>
-                            <button type="button" class="button-link sp-page-break-remove" aria-label="Remove page break">
-                                <img src="<?php echo esc_url(SP_URL . 'assets/images/trash-can.svg'); ?>" alt="" class="sp-trash-icon" width="18" height="18">
-                            </button>
-                            <div class="sp-page-break-line"></div>
+                            <div class="sp-page-break-bar">
+                                <div class="sp-page-break-line"></div>
+                                <span class="sp-page-break-label">Page Break</span>
+                                <button type="button" class="button-link sp-page-break-remove" aria-label="Remove page break">
+                                    <img src="<?php echo esc_url(SP_URL . 'assets/images/trash-can.svg'); ?>" alt="" class="sp-trash-icon" width="18" height="18">
+                                </button>
+                                <div class="sp-page-break-line"></div>
+                            </div>
+                            <div class="sp-page-header-field">
+                                <label class="sp-page-header-label">Page <span class="sp-page-number-display"><?php echo esc_html($current_page); ?></span> Header</label>
+                                <input
+                                    type="text"
+                                    class="regular-text sp-page-header-input"
+                                    name="sp_page_headers[<?php echo esc_attr($current_page); ?>]"
+                                    value="<?php echo esc_attr($ph_value); ?>"
+                                    placeholder="Optional page header…"
+                                >
+                            </div>
                         </div>
                 <?php   endif; ?>
                         <?php
@@ -135,6 +172,37 @@
                             </div>
                         </div>
                     <?php endforeach; ?>
+
+                    <?php
+                    // Render trailing page breaks: page breaks placed after the last question.
+                    // Identified by page_headers keys greater than the highest question page number.
+                    if (!empty($page_headers_decoded)) :
+                        $max_header_page = max(array_map('intval', array_keys($page_headers_decoded)));
+                        for ($tp = $prev_page + 1; $tp <= $max_header_page; $tp++) :
+                            $ph_value = isset($page_headers_decoded[$tp]) ? $page_headers_decoded[$tp] : '';
+                    ?>
+                        <div class="sp-page-break">
+                            <div class="sp-page-break-bar">
+                                <div class="sp-page-break-line"></div>
+                                <span class="sp-page-break-label">Page Break</span>
+                                <button type="button" class="button-link sp-page-break-remove" aria-label="Remove page break">
+                                    <img src="<?php echo esc_url(SP_URL . 'assets/images/trash-can.svg'); ?>" alt="" class="sp-trash-icon" width="18" height="18">
+                                </button>
+                                <div class="sp-page-break-line"></div>
+                            </div>
+                            <div class="sp-page-header-field">
+                                <label class="sp-page-header-label">Page <span class="sp-page-number-display"><?php echo esc_html($tp); ?></span> Header</label>
+                                <input
+                                    type="text"
+                                    class="regular-text sp-page-header-input"
+                                    name="sp_page_headers[<?php echo esc_attr($tp); ?>]"
+                                    value="<?php echo esc_attr($ph_value); ?>"
+                                    placeholder="Optional page header…"
+                                >
+                            </div>
+                        </div>
+                    <?php   endfor; endif; ?>
+
                 <?php endif; ?>
             </div>
 

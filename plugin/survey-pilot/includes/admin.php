@@ -2,7 +2,7 @@
 
 add_action('admin_menu', function() {
     add_menu_page(
-        'SurveyPilot Dashboard',
+        'SurveyPilot',
         'SurveyPilot',
         'manage_options',
         'survey-pilot',
@@ -11,6 +11,17 @@ add_action('admin_menu', function() {
         6
     );
 
+    // Override the auto-generated duplicate submenu entry with the "Dashboard" label.
+    add_submenu_page(
+        'survey-pilot',
+        'Dashboard',
+        'Dashboard',
+        'manage_options',
+        'survey-pilot',
+        'sp_render_dashboard'
+    );
+
+    // Hidden page — accessible via Edit/Create buttons, not the sidebar.
     add_submenu_page(
         null,
         'Create Survey',
@@ -31,21 +42,25 @@ add_action('admin_enqueue_scripts', function() {
         'survey-pilot-admin',
         SP_URL . 'assets/css/admin.css',
         [],
-        '1.6'
+        '1.8'
     );
 
     wp_enqueue_script(
         'survey-pilot-admin',
         SP_URL . 'assets/js/admin.js',
         [],
-        '1.6',
+        '1.8',
         true
     );
 
+    global $wpdb;
+    $existing_titles = $wpdb->get_col("SELECT title FROM {$wpdb->prefix}survey_info");
+
     wp_localize_script('survey-pilot-admin', 'spAdmin', [
-        'ajaxUrl'       => admin_url('admin-ajax.php'),
-        'nonce'         => wp_create_nonce('sp_save_survey_order'),
-        'exportNonce'   => wp_create_nonce('sp_export_survey_csv'),
+        'ajaxUrl'         => admin_url('admin-ajax.php'),
+        'nonce'           => wp_create_nonce('sp_save_survey_order'),
+        'exportNonce'     => wp_create_nonce('sp_export_survey_csv'),
+        'surveyTitles'    => array_values($existing_titles),
     ]);
 });
 
@@ -211,6 +226,29 @@ function sp_handle_export_survey_csv() {
     ]);
 }
 
+// Collect page header text boxes from POST and return a JSON string (or null if none submitted).
+// Keys are 1-based page numbers, values are the sanitized header strings (may be empty).
+function sp_build_page_headers_json() {
+    if (empty($_POST['sp_page_headers']) || !is_array($_POST['sp_page_headers'])) {
+        return null;
+    }
+
+    $raw = $_POST['sp_page_headers'];
+    $headers = [];
+    foreach ($raw as $page_num => $value) {
+        $page_num = absint($page_num);
+        if ($page_num < 1) continue;
+        $headers[$page_num] = sanitize_text_field(wp_unslash($value));
+    }
+
+    if (empty($headers)) {
+        return null;
+    }
+
+    ksort($headers);
+    return wp_json_encode($headers);
+}
+
 // Handle Create / Edit / Duplicate Survey Submission
 add_action('admin_post_sp_create_survey', 'sp_handle_create_survey');
 add_action('admin_post_sp_edit_survey', 'sp_handle_edit_survey');
@@ -238,8 +276,18 @@ function sp_handle_create_survey() {
     $survey_title = sanitize_text_field(wp_unslash($_POST['sp_survey_title']));
     $description = isset($_POST['sp_survey_description']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_description'])) : null;
     $instructions = isset($_POST['sp_survey_instructions']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_instructions'])) : null;
-    
-    $survey_id = sp_add_survey_info_row($survey_title, $description, $instructions);
+
+    global $wpdb;
+    $duplicate = $wpdb->get_var(
+        $wpdb->prepare("SELECT id FROM {$wpdb->prefix}survey_info WHERE title = %s LIMIT 1", $survey_title)
+    );
+    if ($duplicate) {
+        wp_die('A survey with that name already exists. Please choose a different title.', 'Duplicate Title', ['back_link' => true]);
+    }
+
+    $page_headers_json = sp_build_page_headers_json();
+
+    $survey_id = sp_add_survey_info_row($survey_title, $description, $instructions, $page_headers_json);
 
     if (is_wp_error($survey_id)) {
         wp_die('Failed to create survey.');
@@ -273,7 +321,21 @@ function sp_handle_edit_survey() {
     $description = isset($_POST['sp_survey_description']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_description'])) : null;
     $instructions = isset($_POST['sp_survey_instructions']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_instructions'])) : null;
 
-    $update_result = sp_update_survey_info_row($survey_id, $survey_title, $description, $instructions);
+    global $wpdb;
+    $duplicate = $wpdb->get_var(
+        $wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}survey_info WHERE title = %s AND id != %d LIMIT 1",
+            $survey_title,
+            $survey_id
+        )
+    );
+    if ($duplicate) {
+        wp_die('A survey with that name already exists. Please choose a different title.', 'Duplicate Title', ['back_link' => true]);
+    }
+
+    $page_headers_json = sp_build_page_headers_json();
+
+    $update_result = sp_update_survey_info_row($survey_id, $survey_title, $description, $instructions, $page_headers_json);
 
     if (is_wp_error($update_result)) {
         wp_die('Failed to update survey.');
@@ -316,10 +378,25 @@ function sp_handle_duplicate_survey() {
     $original_title = $original['title'];
     $new_title = $original_title . ' (Copy)';
 
+    $duplicate_exists = $wpdb->get_var(
+        $wpdb->prepare(
+            "SELECT id FROM {$survey_info_table} WHERE title = %s LIMIT 1",
+            $new_title
+        )
+    );
+    if ($duplicate_exists) {
+        wp_die(
+            esc_html('"' . $new_title . '" already exists. Please rename or delete it before duplicating.'),
+            'Cannot Duplicate Survey',
+            ['back_link' => true]
+        );
+    }
+
     $new_survey_id = sp_add_survey_info_row(
         $new_title,
         $original['survey_description'],
-        $original['instructions']
+        $original['instructions'],
+        isset($original['page_headers']) ? $original['page_headers'] : null
     );
 
     if (is_wp_error($new_survey_id) || !$new_survey_id) {

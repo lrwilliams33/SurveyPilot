@@ -16,9 +16,14 @@
 }
 
 .sp-dashboard-header {
-    padding-top: 6px;
-    padding-bottom: 4px;
+    padding-top: 10px;
+    padding-bottom: 10px;
     text-align: center;
+}
+
+.sp-dashboard-header h1 {
+    font-size: 34px;
+    font-weight: 500;
 }
 
 .sp-survey-list-header {
@@ -31,10 +36,14 @@
 }
 
 .sp-survey-list-label {
-    font-size: 28px;
+    font-size: 30px;
     font-weight: 600;
     color: #1d2327;
     margin-left: 6px;
+}
+
+.sp-no-surveys {
+    font-size: 15px;
 }
 
 .sp-list-header-right {
@@ -483,7 +492,7 @@
 }
 
 .sp-dashboard-right h2 {
-    font-size: 26px;
+    font-size: 30px;
     margin-top: 0;
     margin-bottom: 12px;
 }
@@ -537,6 +546,11 @@
     margin-top: 28px;
 }
 
+.sp-questions-heading + .description {
+    margin-bottom: 16px;
+    font-size: 15px;
+}
+
 #sp-question-builder {
     max-width: 35%;
     margin-top: 8px;
@@ -563,9 +577,42 @@
 
 .sp-page-break {
     display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 20px 0 4px;
+}
+
+.sp-page-break-bar {
+    display: flex;
     align-items: center;
     gap: 10px;
-    margin: 20px 0 4px;
+}
+
+.sp-page-header-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 2px;
+}
+
+.sp-page-header-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1d2327;
+    white-space: nowrap;
+    min-width: 157px;
+    text-align: center;
+}
+
+.sp-page-header-input {
+    max-width: 480px;
+}
+
+#sp-page-1-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
 }
 
 .sp-page-break-line {

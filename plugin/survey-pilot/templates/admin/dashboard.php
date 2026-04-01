@@ -84,7 +84,7 @@ foreach ($raw_counts as $rc) {
                                 </button>
                                 <div class="sp-survey-menu" role="menu">
                                     <a href="<?php echo esc_url($edit_url); ?>" class="sp-survey-menu-item" role="menuitem">Edit</a>
-                                    <a href="<?php echo esc_url($duplicate_url); ?>" class="sp-survey-menu-item" role="menuitem">Duplicate</a>
+                                    <a href="<?php echo esc_url($duplicate_url); ?>" class="sp-survey-menu-item sp-duplicate-btn" role="menuitem" data-survey-title="<?php echo esc_attr($survey['title']); ?>">Duplicate</a>
                                     <button type="button" class="sp-survey-menu-item sp-survey-menu-item-export" role="menuitem" data-sp-export-survey-id="<?php echo (int) $survey['id']; ?>" data-sp-survey-title="<?php echo esc_attr($survey['title']); ?>" data-sp-response-count="<?php echo (int) ($response_counts[ (int) $survey['id'] ] ?? 0); ?>">Export Responses</button>
                                     <a href="<?php echo esc_url($delete_url); ?>" data-sp-delete-url="<?php echo esc_url($delete_url); ?>" data-sp-survey-title="<?php echo esc_attr($survey['title']); ?>" class="sp-survey-menu-item sp-survey-menu-item-delete" role="menuitem">Delete</a>
                                 </div>
@@ -93,7 +93,7 @@ foreach ($raw_counts as $rc) {
                     <?php endforeach; ?>
                 </div>
             <?php else : ?>
-                <p>No surveys created yet.</p>
+                <p class="sp-no-surveys">No surveys created yet.</p>
             <?php endif; ?>
         </div>
 
@@ -104,6 +104,17 @@ foreach ($raw_counts as $rc) {
             <p class="sp-shortcode-block"><code>[survey_pilot name="My Survey"]</code></p>
             <p>Replace <code>My Survey</code> with the exact name of your survey. Each card shows the correct shortcode to copy.</p>
             <p class="sp-eg-line">e.g. a survey named <strong>Customer Feedback</strong> uses:<br><code>[survey_pilot name="Customer Feedback"]</code></p>
+        </div>
+    </div>
+</div>
+
+<div id="sp-duplicate-blocked-modal" class="sp-modal" aria-hidden="true">
+    <div class="sp-modal-overlay" tabindex="-1"></div>
+    <div class="sp-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sp-dup-blocked-title" tabindex="-1">
+        <h2 id="sp-dup-blocked-title">Cannot Duplicate Survey</h2>
+        <p>A survey named <strong id="sp-dup-blocked-name"></strong> already exists. Please rename or delete it before duplicating.</p>
+        <div class="sp-modal-actions">
+            <a href="#" class="button sp-btn-large" id="sp-dup-blocked-ok">OK</a>
         </div>
     </div>
 </div>
