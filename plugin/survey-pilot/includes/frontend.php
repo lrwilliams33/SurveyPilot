@@ -6,6 +6,9 @@
  * The name attribute is required so the correct survey is shown on the page.
  * For step navigation the resolved id is passed via sp_survey_id in the URL.
  */
+use Dompdf\Dompdf;
+use Dompdf\Options;
+
 function sp_render_survey($atts) {
     global $wpdb;
 
@@ -160,6 +163,68 @@ function sp_handle_submit_survey() {
 exit;
 }
 
+function sp_generate_survey_pdf($survey_title, $response_id, $results) {
+    if (!class_exists('Dompdf\Dompdf')) {
+        return new WP_Error('sp_no_dompdf', 'Dompdf is not available.');
+    }
+
+    $options = new Options();
+    $options->set('isRemoteEnabled', false);
+
+    $dompdf = new Dompdf($options);
+
+    $html  = '<html><body>';
+    $html .= '<h2>Survey Report</h2>';
+    $html .= '<p><strong>Survey:</strong> ' . esc_html($survey_title) . '</p>';
+    $html .= '<p><strong>Response ID:</strong> ' . intval($response_id) . '</p>';
+    $html .= '<table style="border-collapse:collapse;width:100%;">';
+    $html .= '<tr>
+                <th style="border:1px solid #ccc;padding:8px;text-align:left;">Question</th>
+                <th style="border:1px solid #ccc;padding:8px;text-align:left;">Answer</th>
+              </tr>';
+
+    foreach ($results as $row) {
+        $labels = json_decode($row->scale_labels, true);
+        $answer_text = $row->answer_value;
+
+        if (is_array($labels) && isset($labels[$row->answer_value])) {
+            $answer_text = $labels[$row->answer_value];
+        }
+
+        $html .= '<tr>';
+        $html .= '<td style="border:1px solid #ccc;padding:8px;">' . esc_html($row->question_text) . '</td>';
+        $html .= '<td style="border:1px solid #ccc;padding:8px;">' . esc_html($answer_text) . '</td>';
+        $html .= '</tr>';
+    }
+
+    $html .= '</table>';
+    $html .= '</body></html>';
+
+    $dompdf->loadHtml($html);
+    $dompdf->setPaper('A4', 'portrait');
+    $dompdf->render();
+
+    $upload_dir = wp_upload_dir();
+    if (!empty($upload_dir['error'])) {
+        return new WP_Error('sp_upload_error', $upload_dir['error']);
+    }
+
+    $pdf_dir = trailingslashit($upload_dir['basedir']) . 'survey-pilot-pdfs';
+    if (!file_exists($pdf_dir)) {
+        wp_mkdir_p($pdf_dir);
+    }
+
+    $file_path = trailingslashit($pdf_dir) . 'survey-report-' . intval($response_id) . '.pdf';
+
+    $written = file_put_contents($file_path, $dompdf->output());
+
+    if ($written === false) {
+        return new WP_Error('sp_pdf_write_failed', 'Failed to create PDF file.');
+    }
+
+    return $file_path;
+}
+
 //send email to the user function
 function sp_send_survey_email($response_id, $survey_id, $user_id) {
     global $wpdb;
@@ -237,10 +302,30 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
 
     $headers = ['Content-Type: text/html; charset=UTF-8'];
 
+    $attachments = [];
+    $pdf_path = sp_generate_survey_pdf($survey_title, $response_id, $results);
+    if (!is_wp_error($pdf_path)) {
+        $attachments[] = $pdf_path;
+    }
+    else{
+        error_log('SP: PDF generation failed: ' . $pdf_path->get_error_message());
+        if (is_wp_error($pdf_path) && $pdf_path->get_error_code() === 'sp_no_dompdf') {
+            error_log('SP: Dompdf library is missing. Please run composer install to include dependencies.');
+        }
+    }
+
     error_log('SP: sending to email=' . $user_email);
     error_log('SP: about to call wp_mail');
-    $sent = wp_mail($user_email, $subject, $message, $headers);
+    $sent = wp_mail($user_email, $subject, $message, $headers, $attachments);
     error_log('SP: wp_mail sent: ' . ($sent ? 'true' : 'false'));
+
+    if (!empty($attachments)) {
+        foreach ($attachments as $file) {
+            if (file_exists($file)) {
+                unlink($file);
+            }
+        }
+    }
 }
 
 /**

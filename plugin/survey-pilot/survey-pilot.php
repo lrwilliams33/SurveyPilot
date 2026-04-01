@@ -14,6 +14,9 @@ if (!defined('ABSPATH')) {
 define('SP_PATH', plugin_dir_path(__FILE__));
 define('SP_URL', plugin_dir_url(__FILE__));
 
+if (file_exists(__DIR__ . '/vendor/autoload.php')) {
+    require_once __DIR__ . '/vendor/autoload.php';
+}
 
 require_once SP_PATH . 'includes/database.php';
 register_activation_hook(__FILE__, 'add_tables');
@@ -34,3 +37,4 @@ require_once SP_PATH . 'includes/survey-service.php';
 //require_once SP_PATH . 'includes/response-service.php';
 //require_once SP_PATH . 'includes/analytics-service.php';
 require_once SP_PATH . 'includes/email-settings.php';
+require_once SP_PATH . 'includes/pdf-report.php';
