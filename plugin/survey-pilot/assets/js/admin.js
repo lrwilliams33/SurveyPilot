@@ -413,6 +413,10 @@
       Array.from(questionsList.children).forEach((el) => {
         if (el.classList.contains("sp-page-break")) {
           currentPage++;
+          const headerInput = el.querySelector(".sp-page-header-input");
+          if (headerInput) headerInput.name = `sp_page_headers[${currentPage}]`;
+          const pageNumDisplay = el.querySelector(".sp-page-number-display");
+          if (pageNumDisplay) pageNumDisplay.textContent = String(currentPage);
         } else if (el.classList.contains("sp-question-card")) {
           const pageInput = el.querySelector(".sp-page-input");
           if (pageInput) pageInput.value = currentPage;
@@ -533,14 +537,20 @@
       const pb = document.createElement("div");
       pb.className = "sp-page-break";
       pb.innerHTML = `
-        <div class="sp-page-break-line"></div>
-        <span class="sp-page-break-label">Page Break</span>
-        <button type="button" class="button-link sp-page-break-remove" aria-label="Remove page break">
-          ${trashIconUrl
-            ? `<img src="${trashIconUrl}" alt="" class="sp-trash-icon" width="18" height="18">`
-            : `<span class="dashicons dashicons-trash"></span>`}
-        </button>
-        <div class="sp-page-break-line"></div>
+        <div class="sp-page-break-bar">
+          <div class="sp-page-break-line"></div>
+          <span class="sp-page-break-label">Page Break</span>
+          <button type="button" class="button-link sp-page-break-remove" aria-label="Remove page break">
+            ${trashIconUrl
+              ? `<img src="${trashIconUrl}" alt="" class="sp-trash-icon" width="18" height="18">`
+              : `<span class="dashicons dashicons-trash"></span>`}
+          </button>
+          <div class="sp-page-break-line"></div>
+        </div>
+        <div class="sp-page-header-field">
+          <label class="sp-page-header-label">Page <span class="sp-page-number-display"></span> Header</label>
+          <input type="text" class="regular-text sp-page-header-input" name="" placeholder="Optional page header\u2026">
+        </div>
       `;
       questionsList.appendChild(pb);
       attachPageBreakHandlers(pb);

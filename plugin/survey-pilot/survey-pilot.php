@@ -20,9 +20,9 @@ register_activation_hook(__FILE__, 'add_tables');
 
 // Run DB migrations on admin load when schema version changes.
 add_action('admin_init', function() {
-    if (get_option('sp_db_version') !== '1.2') {
+    if (get_option('sp_db_version') !== '1.3') {
         add_tables();
-        update_option('sp_db_version', '1.2');
+        update_option('sp_db_version', '1.3');
     }
 });
 

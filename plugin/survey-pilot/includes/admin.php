@@ -42,14 +42,14 @@ add_action('admin_enqueue_scripts', function() {
         'survey-pilot-admin',
         SP_URL . 'assets/css/admin.css',
         [],
-        '1.7'
+        '1.8'
     );
 
     wp_enqueue_script(
         'survey-pilot-admin',
         SP_URL . 'assets/js/admin.js',
         [],
-        '1.7',
+        '1.8',
         true
     );
 
@@ -226,6 +226,29 @@ function sp_handle_export_survey_csv() {
     ]);
 }
 
+// Collect page header text boxes from POST and return a JSON string (or null if none submitted).
+// Keys are 1-based page numbers, values are the sanitized header strings (may be empty).
+function sp_build_page_headers_json() {
+    if (empty($_POST['sp_page_headers']) || !is_array($_POST['sp_page_headers'])) {
+        return null;
+    }
+
+    $raw = $_POST['sp_page_headers'];
+    $headers = [];
+    foreach ($raw as $page_num => $value) {
+        $page_num = absint($page_num);
+        if ($page_num < 1) continue;
+        $headers[$page_num] = sanitize_text_field(wp_unslash($value));
+    }
+
+    if (empty($headers)) {
+        return null;
+    }
+
+    ksort($headers);
+    return wp_json_encode($headers);
+}
+
 // Handle Create / Edit / Duplicate Survey Submission
 add_action('admin_post_sp_create_survey', 'sp_handle_create_survey');
 add_action('admin_post_sp_edit_survey', 'sp_handle_edit_survey');
@@ -262,7 +285,9 @@ function sp_handle_create_survey() {
         wp_die('A survey with that name already exists. Please choose a different title.', 'Duplicate Title', ['back_link' => true]);
     }
 
-    $survey_id = sp_add_survey_info_row($survey_title, $description, $instructions);
+    $page_headers_json = sp_build_page_headers_json();
+
+    $survey_id = sp_add_survey_info_row($survey_title, $description, $instructions, $page_headers_json);
 
     if (is_wp_error($survey_id)) {
         wp_die('Failed to create survey.');
@@ -308,7 +333,9 @@ function sp_handle_edit_survey() {
         wp_die('A survey with that name already exists. Please choose a different title.', 'Duplicate Title', ['back_link' => true]);
     }
 
-    $update_result = sp_update_survey_info_row($survey_id, $survey_title, $description, $instructions);
+    $page_headers_json = sp_build_page_headers_json();
+
+    $update_result = sp_update_survey_info_row($survey_id, $survey_title, $description, $instructions, $page_headers_json);
 
     if (is_wp_error($update_result)) {
         wp_die('Failed to update survey.');
@@ -368,7 +395,8 @@ function sp_handle_duplicate_survey() {
     $new_survey_id = sp_add_survey_info_row(
         $new_title,
         $original['survey_description'],
-        $original['instructions']
+        $original['instructions'],
+        isset($original['page_headers']) ? $original['page_headers'] : null
     );
 
     if (is_wp_error($new_survey_id) || !$new_survey_id) {

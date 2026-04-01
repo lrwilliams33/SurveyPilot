@@ -16,6 +16,7 @@ function add_tables(){
         title VARCHAR(255) NOT NULL,
         survey_description TEXT NULL,
         instructions TEXT NULL,
+        page_headers LONGTEXT NULL,
         sort_order INT UNSIGNED NOT NULL DEFAULT 0,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -84,25 +85,29 @@ Following functions are for adding rows to the tables
 */
 
 //This function adds into the survey_info table to store created surveys
-function sp_add_survey_info_row($title, $description = null, $instructions = null) {
+function sp_add_survey_info_row($title, $description = null, $instructions = null, $page_headers = null) {
     global $wpdb;
 
     //fetch the title, description, and instructions and format
     $title = sanitize_text_field($title);
     $description = sanitize_textarea_field($description);
     $instructions = sanitize_textarea_field($instructions);
+    // page_headers is already a JSON string or null; sanitize as text
+    $page_headers = ($page_headers !== null && $page_headers !== '') ? sanitize_textarea_field($page_headers) : null;
 
     $insert_status = $wpdb->insert(
         $wpdb->prefix . 'survey_info',
         [
-            'title' => $title,
+            'title'              => $title,
             'survey_description' => $description,
-            'instructions' => $instructions
+            'instructions'       => $instructions,
+            'page_headers'       => $page_headers,
         ],
         [
             '%s',
             '%s',
-            '%s'
+            '%s',
+            '%s',
         ]
     );
 
@@ -311,7 +316,7 @@ function sp_save_survey_submission($survey_id, array $answers, $user_id = null) 
 /**
  * Update survey_info fields (title/description/instructions) and always bump updated_at.
  */
-function sp_update_survey_info_row($survey_id, $title, $description = null, $instructions = null) {
+function sp_update_survey_info_row($survey_id, $title, $description = null, $instructions = null, $page_headers = null) {
     global $wpdb;
 
     $survey_id = intval($survey_id);
@@ -322,6 +327,7 @@ function sp_update_survey_info_row($survey_id, $title, $description = null, $ins
     $title = sanitize_text_field($title);
     $description = sanitize_textarea_field($description);
     $instructions = sanitize_textarea_field($instructions);
+    $page_headers = ($page_headers !== null && $page_headers !== '') ? sanitize_textarea_field($page_headers) : null;
 
     $update_status = $wpdb->update(
         $wpdb->prefix . 'survey_info',
@@ -329,12 +335,14 @@ function sp_update_survey_info_row($survey_id, $title, $description = null, $ins
             'title'              => $title,
             'survey_description' => $description,
             'instructions'       => $instructions,
+            'page_headers'       => $page_headers,
             'updated_at'         => current_time('mysql'),
         ],
         [
             'id' => $survey_id
         ],
         [
+            '%s',
             '%s',
             '%s',
             '%s',

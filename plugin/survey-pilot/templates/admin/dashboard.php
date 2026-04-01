@@ -93,7 +93,7 @@ foreach ($raw_counts as $rc) {
                     <?php endforeach; ?>
                 </div>
             <?php else : ?>
-                <p>No surveys created yet.</p>
+                <p class="sp-no-surveys">No surveys created yet.</p>
             <?php endif; ?>
         </div>
 
