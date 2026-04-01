@@ -21,6 +21,38 @@ if (!$questions) {
     echo '<div class="sp-container"><p class="sp-notice">No questions found for this survey.</p></div>';
     return;
 }
+// Fetch page headers (JSON stored in survey_info.page_headers, keyed by page number)
+$page_headers = [];
+$survey_info = $wpdb->get_row(
+    $wpdb->prepare(
+        "SELECT page_headers FROM {$wpdb->prefix}survey_info WHERE id = %d",
+        $sp_survey_id
+    ),
+    ARRAY_A
+);
+
+if ($survey_info && !empty($survey_info['page_headers'])) {
+    $decoded_headers = json_decode($survey_info['page_headers'], true);
+    if (is_array($decoded_headers)) {
+        foreach ($decoded_headers as $page_num => $header_text) {
+            $page_num = (int) $page_num;
+            if ($page_num < 1) {
+                continue;
+            }
+
+            $header_text = (string) $header_text;
+            if ($header_text === '') {
+                continue;
+            }
+
+            $page_headers[$page_num] = $header_text;
+        }
+
+        if (!empty($page_headers)) {
+            ksort($page_headers);
+        }
+    }
+}
 
 // Group questions by page number
 $pages = [];
@@ -32,7 +64,20 @@ foreach ($questions as $q) {
     $pages[$page_num][] = $q;
 }
 
-ksort($pages);
+if (!empty($pages)) {
+    ksort($pages);
+}
+
+// Determine all page numbers (from questions and from page headers)
+$question_page_numbers = array_keys($pages);
+$header_page_numbers   = array_keys($page_headers);
+$all_page_numbers = array_unique(array_merge($question_page_numbers, $header_page_numbers));
+sort($all_page_numbers);
+
+if (empty($all_page_numbers)) {
+    echo '<div class="sp-container"><p class="sp-notice">No pages found for this survey.</p></div>';
+    return;
+}
 
 // Get current page from query parameter or POST, default to first page
 $current_page = 1;
@@ -42,11 +87,12 @@ if (isset($_GET['sp_page'])) {
     $current_page = (int) $_POST['sp_current_page'];
 }
 
-if (!isset($pages[$current_page])) {
-    $current_page = min(array_keys($pages));
+// Fallback to the first valid page if the requested page is not available
+if (!in_array($current_page, $all_page_numbers, true)) {
+    $current_page = reset($all_page_numbers);
 }
 
-$total_pages = count($pages);
+$total_pages = count($all_page_numbers);
 $current_questions = $pages[$current_page] ?? [];
 
 // Group current page's questions that share the same scale into table groups
@@ -70,7 +116,9 @@ if (!empty($current_group)) {
 
 <div class="sp-container">
 
-    <h2>Survey Questions</h2>
+    <?php if (!empty($page_headers[$current_page])) : ?>
+        <h2><?php echo esc_html($page_headers[$current_page]); ?></h2>
+    <?php endif; ?>
 
     <div class="sp-page-indicator">
         <span class="sp-page-number">Page <?php echo $current_page; ?> of <?php echo $total_pages; ?></span>

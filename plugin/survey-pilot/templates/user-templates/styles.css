@@ -165,6 +165,14 @@
     border-radius: 4px;
 }
 
+.sp-page-header {
+    text-align: center;
+    margin: 0 0 24px 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #1d2327;
+}
+
 .sp-navigation {
     display: flex;
     gap: 12px;
