@@ -128,6 +128,52 @@
     });
   }
 
+  // Duplicate blocked modal
+  const dupBlockedModal   = document.getElementById("sp-duplicate-blocked-modal");
+  const dupBlockedOkBtn   = document.getElementById("sp-dup-blocked-ok");
+  const dupBlockedNameEl  = document.getElementById("sp-dup-blocked-name");
+  const dupBtns           = document.querySelectorAll(".sp-duplicate-btn");
+
+  if (dupBlockedModal && dupBtns.length > 0) {
+    const dupOverlay = dupBlockedModal.querySelector(".sp-modal-overlay");
+    const dupDialog  = dupBlockedModal.querySelector(".sp-modal-dialog");
+    const titles     = (spAdmin.surveyTitles || []).map((t) => t.toLowerCase());
+
+    function openDupBlockedModal(copyTitle) {
+      if (dupBlockedNameEl) dupBlockedNameEl.textContent = copyTitle;
+      dupBlockedModal.classList.add("is-open");
+      dupBlockedModal.setAttribute("aria-hidden", "false");
+      dupDialog?.focus?.();
+    }
+
+    function closeDupBlockedModal() {
+      dupBlockedModal.classList.remove("is-open");
+      dupBlockedModal.setAttribute("aria-hidden", "true");
+    }
+
+    dupBtns.forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const title     = btn.getAttribute("data-survey-title") || "";
+        const copyTitle = title + " (Copy)";
+        if (titles.includes(copyTitle.toLowerCase())) {
+          e.preventDefault();
+          e.stopPropagation();
+          openDupBlockedModal(copyTitle);
+        }
+      });
+    });
+
+    dupOverlay?.addEventListener("click", closeDupBlockedModal);
+    dupBlockedOkBtn?.addEventListener("click", (e) => {
+      e.preventDefault();
+      closeDupBlockedModal();
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && dupBlockedModal.classList.contains("is-open")) closeDupBlockedModal();
+    });
+  }
+
   // Delete confirmation modal
   const openButtons = document.querySelectorAll("[data-sp-delete-url]");
   const modal = document.getElementById("sp-delete-modal");
@@ -623,60 +669,124 @@
 
     // Require at least one question before the form can be submitted.
     const form = builder.closest("form");
-    const questionsError = document.getElementById("sp-questions-error");
-    const titleInput = document.getElementById("sp_survey_title");
-    const titleError = document.getElementById("sp-title-error");
+    const questionsError   = document.getElementById("sp-questions-error");
+    const titleInput       = document.getElementById("sp_survey_title");
+    const titleError       = document.getElementById("sp-title-error");
+    const excludeIdInput   = document.getElementById("sp_survey_exclude_id");
+    const originalTitleInput = document.getElementById("sp_survey_original_title");
+
+    let titleIsDuplicate = false;
+    let titleIsVerified  = false;
+
+    function showTitleError(msg) {
+      if (titleError) {
+        titleError.textContent = msg;
+        titleError.style.display = "";
+      }
+      titleInput?.classList.add("sp-input-error");
+    }
+
+    function clearTitleError() {
+      if (titleError) titleError.style.display = "none";
+      titleInput?.classList.remove("sp-input-error");
+      titleIsDuplicate = false;
+    }
+
+    const originalTitle = originalTitleInput?.value ?? "";
+    const existingTitles = (spAdmin.surveyTitles || []).map((t) => t.toLowerCase());
+
+    function checkDuplicateTitle(title) {
+      if (title.toLowerCase() === originalTitle.toLowerCase()) {
+        clearTitleError();
+        titleIsVerified = true;
+        return false;
+      }
+      return existingTitles.includes(title.toLowerCase());
+    }
 
     if (titleInput && titleError) {
+      // Any change invalidates the previous verification result.
       titleInput.addEventListener("input", () => {
+        titleIsVerified = false;
         if (titleInput.value.trim()) {
-          titleError.style.display = "none";
-          titleInput.classList.remove("sp-input-error");
+          clearTitleError();
+        } else {
+          titleIsDuplicate = false;
+        }
+      });
+
+      titleInput.addEventListener("blur", () => {
+        const val = titleInput.value.trim();
+        if (!val) return;
+        const isDup = checkDuplicateTitle(val);
+        if (isDup) {
+          titleIsDuplicate = true;
+          titleIsVerified  = false;
+          showTitleError("A survey with this name already exists.");
+        } else {
+          titleIsDuplicate = false;
+          titleIsVerified  = true;
+          clearTitleError();
         }
       });
     }
 
     if (form && questionsError) {
       form.addEventListener("submit", (e) => {
-        let blocked = false;
 
-        if (titleInput && !titleInput.value.trim()) {
-          e.preventDefault();
-          blocked = true;
-          titleError.style.display = "";
-          titleInput.classList.add("sp-input-error");
-          titleInput.scrollIntoView({ behavior: "smooth", block: "center" });
+        const titleVal = titleInput?.value.trim() ?? "";
+
+        // --- Synchronous checks (no async needed) ---
+        let syncBlocked = false;
+
+        if (!titleVal) {
+          syncBlocked = true;
+          showTitleError("Please enter a survey title.");
+          titleInput?.scrollIntoView({ behavior: "smooth", block: "center" });
+        } else if (titleIsDuplicate) {
+          syncBlocked = true;
+          showTitleError("A survey with this name already exists.");
+          titleInput?.scrollIntoView({ behavior: "smooth", block: "center" });
         }
 
         if (!questionsList.querySelector(".sp-question-card")) {
-          e.preventDefault();
-          blocked = true;
+          syncBlocked = true;
           questionsError.style.display = "";
-          if (!titleInput || titleInput.value.trim()) {
+          if (titleVal && !titleIsDuplicate) {
             questionsError.scrollIntoView({ behavior: "smooth", block: "center" });
           }
         } else {
           questionsError.style.display = "none";
-
           let firstEmptyTextarea = null;
           questionsList.querySelectorAll(".sp-question-card").forEach((card) => {
-            const ta = card.querySelector(".sp-question-textarea");
+            const ta  = card.querySelector(".sp-question-textarea");
             const err = card.querySelector(".sp-qtext-error");
             if (ta && !ta.value.trim()) {
-              e.preventDefault();
-              blocked = true;
+              syncBlocked = true;
               if (err) err.style.display = "";
               ta.classList.add("sp-input-error");
               if (!firstEmptyTextarea) firstEmptyTextarea = ta;
             }
           });
-
-          if (firstEmptyTextarea && !blocked) {
+          if (firstEmptyTextarea && (!syncBlocked || (titleVal && !titleIsDuplicate))) {
             firstEmptyTextarea.scrollIntoView({ behavior: "smooth", block: "center" });
-          } else if (firstEmptyTextarea) {
-            if (!titleInput || titleInput.value.trim()) {
-              firstEmptyTextarea.scrollIntoView({ behavior: "smooth", block: "center" });
-            }
+          }
+        }
+
+        if (syncBlocked) {
+          e.preventDefault();
+          return;
+        }
+
+        // --- Check title uniqueness synchronously ---
+        if (!titleIsVerified) {
+          const isDup = checkDuplicateTitle(titleVal);
+          if (isDup) {
+            e.preventDefault();
+            titleIsDuplicate = true;
+            showTitleError("A survey with this name already exists.");
+            titleInput?.scrollIntoView({ behavior: "smooth", block: "center" });
+            return;
           }
         }
       });

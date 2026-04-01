@@ -42,21 +42,25 @@ add_action('admin_enqueue_scripts', function() {
         'survey-pilot-admin',
         SP_URL . 'assets/css/admin.css',
         [],
-        '1.6'
+        '1.7'
     );
 
     wp_enqueue_script(
         'survey-pilot-admin',
         SP_URL . 'assets/js/admin.js',
         [],
-        '1.6',
+        '1.7',
         true
     );
 
+    global $wpdb;
+    $existing_titles = $wpdb->get_col("SELECT title FROM {$wpdb->prefix}survey_info");
+
     wp_localize_script('survey-pilot-admin', 'spAdmin', [
-        'ajaxUrl'       => admin_url('admin-ajax.php'),
-        'nonce'         => wp_create_nonce('sp_save_survey_order'),
-        'exportNonce'   => wp_create_nonce('sp_export_survey_csv'),
+        'ajaxUrl'         => admin_url('admin-ajax.php'),
+        'nonce'           => wp_create_nonce('sp_save_survey_order'),
+        'exportNonce'     => wp_create_nonce('sp_export_survey_csv'),
+        'surveyTitles'    => array_values($existing_titles),
     ]);
 });
 
@@ -249,7 +253,15 @@ function sp_handle_create_survey() {
     $survey_title = sanitize_text_field(wp_unslash($_POST['sp_survey_title']));
     $description = isset($_POST['sp_survey_description']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_description'])) : null;
     $instructions = isset($_POST['sp_survey_instructions']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_instructions'])) : null;
-    
+
+    global $wpdb;
+    $duplicate = $wpdb->get_var(
+        $wpdb->prepare("SELECT id FROM {$wpdb->prefix}survey_info WHERE title = %s LIMIT 1", $survey_title)
+    );
+    if ($duplicate) {
+        wp_die('A survey with that name already exists. Please choose a different title.', 'Duplicate Title', ['back_link' => true]);
+    }
+
     $survey_id = sp_add_survey_info_row($survey_title, $description, $instructions);
 
     if (is_wp_error($survey_id)) {
@@ -283,6 +295,18 @@ function sp_handle_edit_survey() {
     $survey_title = sanitize_text_field(wp_unslash($_POST['sp_survey_title']));
     $description = isset($_POST['sp_survey_description']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_description'])) : null;
     $instructions = isset($_POST['sp_survey_instructions']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_instructions'])) : null;
+
+    global $wpdb;
+    $duplicate = $wpdb->get_var(
+        $wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}survey_info WHERE title = %s AND id != %d LIMIT 1",
+            $survey_title,
+            $survey_id
+        )
+    );
+    if ($duplicate) {
+        wp_die('A survey with that name already exists. Please choose a different title.', 'Duplicate Title', ['back_link' => true]);
+    }
 
     $update_result = sp_update_survey_info_row($survey_id, $survey_title, $description, $instructions);
 
@@ -326,6 +350,20 @@ function sp_handle_duplicate_survey() {
 
     $original_title = $original['title'];
     $new_title = $original_title . ' (Copy)';
+
+    $duplicate_exists = $wpdb->get_var(
+        $wpdb->prepare(
+            "SELECT id FROM {$survey_info_table} WHERE title = %s LIMIT 1",
+            $new_title
+        )
+    );
+    if ($duplicate_exists) {
+        wp_die(
+            esc_html('"' . $new_title . '" already exists. Please rename or delete it before duplicating.'),
+            'Cannot Duplicate Survey',
+            ['back_link' => true]
+        );
+    }
 
     $new_survey_id = sp_add_survey_info_row(
         $new_title,

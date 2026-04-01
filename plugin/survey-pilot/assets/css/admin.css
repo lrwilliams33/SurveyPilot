@@ -16,9 +16,14 @@
 }
 
 .sp-dashboard-header {
-    padding-top: 6px;
-    padding-bottom: 4px;
+    padding-top: 10px;
+    padding-bottom: 10px;
     text-align: center;
+}
+
+.sp-dashboard-header h1 {
+    font-size: 34px;
+    font-weight: 500;
 }
 
 .sp-survey-list-header {
@@ -31,7 +36,7 @@
 }
 
 .sp-survey-list-label {
-    font-size: 28px;
+    font-size: 30px;
     font-weight: 600;
     color: #1d2327;
     margin-left: 6px;
@@ -483,7 +488,7 @@
 }
 
 .sp-dashboard-right h2 {
-    font-size: 26px;
+    font-size: 30px;
     margin-top: 0;
     margin-bottom: 12px;
 }

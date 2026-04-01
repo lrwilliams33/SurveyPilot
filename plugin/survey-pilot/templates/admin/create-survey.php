@@ -21,6 +21,8 @@
         <?php if ($is_edit) : ?>
             <input type="hidden" name="sp_survey_id" value="<?php echo intval($survey['id']); ?>">
         <?php endif; ?>
+        <input type="hidden" id="sp_survey_exclude_id" value="<?php echo $is_edit ? intval($survey['id']) : 0; ?>">
+        <input type="hidden" id="sp_survey_original_title" value="<?php echo $is_edit ? esc_attr($survey['title']) : ''; ?>">
 
         <table class="form-table">
             <tr>
