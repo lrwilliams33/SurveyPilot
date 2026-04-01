@@ -6,8 +6,6 @@
  * The name attribute is required so the correct survey is shown on the page.
  * For step navigation the resolved id is passed via sp_survey_id in the URL.
  */
-use Dompdf\Dompdf;
-use Dompdf\Options;
 
 function sp_render_survey($atts) {
     global $wpdb;
@@ -163,68 +161,6 @@ function sp_handle_submit_survey() {
 exit;
 }
 
-function sp_generate_survey_pdf($survey_title, $response_id, $results) {
-    if (!class_exists('Dompdf\Dompdf')) {
-        return new WP_Error('sp_no_dompdf', 'Dompdf is not available.');
-    }
-
-    $options = new Options();
-    $options->set('isRemoteEnabled', false);
-
-    $dompdf = new Dompdf($options);
-
-    $html  = '<html><body>';
-    $html .= '<h2>Survey Report</h2>';
-    $html .= '<p><strong>Survey:</strong> ' . esc_html($survey_title) . '</p>';
-    $html .= '<p><strong>Response ID:</strong> ' . intval($response_id) . '</p>';
-    $html .= '<table style="border-collapse:collapse;width:100%;">';
-    $html .= '<tr>
-                <th style="border:1px solid #ccc;padding:8px;text-align:left;">Question</th>
-                <th style="border:1px solid #ccc;padding:8px;text-align:left;">Answer</th>
-              </tr>';
-
-    foreach ($results as $row) {
-        $labels = json_decode($row->scale_labels, true);
-        $answer_text = $row->answer_value;
-
-        if (is_array($labels) && isset($labels[$row->answer_value])) {
-            $answer_text = $labels[$row->answer_value];
-        }
-
-        $html .= '<tr>';
-        $html .= '<td style="border:1px solid #ccc;padding:8px;">' . esc_html($row->question_text) . '</td>';
-        $html .= '<td style="border:1px solid #ccc;padding:8px;">' . esc_html($answer_text) . '</td>';
-        $html .= '</tr>';
-    }
-
-    $html .= '</table>';
-    $html .= '</body></html>';
-
-    $dompdf->loadHtml($html);
-    $dompdf->setPaper('A4', 'portrait');
-    $dompdf->render();
-
-    $upload_dir = wp_upload_dir();
-    if (!empty($upload_dir['error'])) {
-        return new WP_Error('sp_upload_error', $upload_dir['error']);
-    }
-
-    $pdf_dir = trailingslashit($upload_dir['basedir']) . 'survey-pilot-pdfs';
-    if (!file_exists($pdf_dir)) {
-        wp_mkdir_p($pdf_dir);
-    }
-
-    $file_path = trailingslashit($pdf_dir) . 'survey-report-' . intval($response_id) . '.pdf';
-
-    $written = file_put_contents($file_path, $dompdf->output());
-
-    if ($written === false) {
-        return new WP_Error('sp_pdf_write_failed', 'Failed to create PDF file.');
-    }
-
-    return $file_path;
-}
-
 //send email to the user function
 function sp_send_survey_email($response_id, $survey_id, $user_id) {
     global $wpdb;
@@ -257,7 +193,7 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
     //join the answers and questions table and fetch information using the response id 
     $results = $wpdb->get_results(
         $wpdb->prepare(
-            "SELECT q.question_text, q.scale_labels, a.answer_value
+            "SELECT q.question_text, q.scale_labels, q.page_number, a.answer_value
              FROM $answers_table a
              JOIN $questions_table q
              ON a.question_id = q.id
@@ -267,43 +203,62 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
         )
     );
 
+    global $wpdb;
+
+
+    $population_means = [];
+
+    if ($survey_id > 0) {
+
+        $answers_table = $wpdb->prefix . 'survey_response_answers';
+        $questions_table = $wpdb->prefix . 'survey_questions';
+
+        $population_results = $wpdb->get_results($wpdb->prepare("
+            SELECT 
+                q.page_number,
+                AVG(a.answer_value) AS avg_score
+            FROM $answers_table a
+            JOIN $questions_table q 
+                ON a.question_id = q.id
+            WHERE q.survey_id = %d
+            GROUP BY q.page_number
+        ", $survey_id));
+
+        foreach ($population_results as $row) {
+            $population_means[$row->page_number] = (float)$row->avg_score;
+        }
+
+        $all_individual_results = $wpdb->get_results($wpdb->prepare("
+            SELECT 
+                a.response_id,
+                q.page_number,
+                AVG(a.answer_value) AS user_composite
+            FROM $answers_table a
+            JOIN $questions_table q 
+                ON a.question_id = q.id
+            WHERE q.survey_id = %d
+            GROUP BY a.response_id, q.page_number
+        ", $survey_id));
+
+        $formatted_individual_results = [];
+        foreach ($all_individual_results as $row) {
+            $formatted_individual_results[$row->page_number][$row->response_id] = (float)$row->user_composite;
+        }
+    }
+
 
     //generate email content with the survey title, questions and answers in a table format  
     $message = '<h2>Survey Report</h2>';
     $message .= '<p>Thank you for completing the survey: <strong>' . esc_html($survey_title) . '</strong></p>';
 
-    $message .= '<table style="border-collapse:collapse;width:100%;">';
-    $message .= '<tr>
-                    <th style="border:1px solid #ccc;padding:8px;text-align:left;">Question</th>
-                    <th style="border:1px solid #ccc;padding:8px;text-align:left;">Answer</th>
-                </tr>';
-
-    //for each question and answer, we need to check if the question has scale labels
-    //if it does we need to convert the answer value to the corresponding label before displaying in the email        
-    foreach ($results as $row) {
-
-        $labels = json_decode($row->scale_labels, true);
-
-        $answer_text = $row->answer_value;
-
-        if (isset($labels[$row->answer_value])) {
-            $answer_text = $labels[$row->answer_value];
-        }
-
-        $message .= '<tr>';
-        $message .= '<td style="border:1px solid #ccc;padding:8px;">' . esc_html($row->question_text) . '</td>';
-        $message .= '<td style="border:1px solid #ccc;padding:8px;">' . esc_html($answer_text) . '</td>';
-        $message .= '</tr>';
-    }
-
-    $message .= '</table>';
-
     $subject = 'Your Survey Submission: ' . $survey_title;
 
     $headers = ['Content-Type: text/html; charset=UTF-8'];
 
+    //attachments field contains our PDF attachment from the upload_dir directory
     $attachments = [];
-    $pdf_path = sp_generate_survey_pdf($survey_title, $response_id, $results);
+    //call the survey PDF generation function 
+    $pdf_path = sp_generate_survey_pdf($survey_title, $response_id, $results, $population_means, $formatted_individual_results);
     if (!is_wp_error($pdf_path)) {
         $attachments[] = $pdf_path;
     }
@@ -319,6 +274,7 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
     $sent = wp_mail($user_email, $subject, $message, $headers, $attachments);
     error_log('SP: wp_mail sent: ' . ($sent ? 'true' : 'false'));
 
+    //since we uploaded files into wordpress for PDF attachements, we delete these files after sending them in the email
     if (!empty($attachments)) {
         foreach ($attachments as $file) {
             if (file_exists($file)) {

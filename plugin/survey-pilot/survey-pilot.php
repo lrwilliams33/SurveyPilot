@@ -14,6 +14,7 @@ if (!defined('ABSPATH')) {
 define('SP_PATH', plugin_dir_path(__FILE__));
 define('SP_URL', plugin_dir_url(__FILE__));
 
+//makes Dompdf available for PDF generation
 if (file_exists(__DIR__ . '/vendor/autoload.php')) {
     require_once __DIR__ . '/vendor/autoload.php';
 }
@@ -32,9 +33,9 @@ add_action('admin_init', function() {
 require_once SP_PATH . 'includes/admin.php';
 require_once SP_PATH . 'includes/admin-pages.php';
 //require_once SP_PATH . 'includes/admin-handlers.php';
+require_once SP_PATH . 'includes/pdf-report.php';
 require_once SP_PATH . 'includes/frontend.php';
 require_once SP_PATH . 'includes/survey-service.php';
 //require_once SP_PATH . 'includes/response-service.php';
 //require_once SP_PATH . 'includes/analytics-service.php';
 require_once SP_PATH . 'includes/email-settings.php';
-require_once SP_PATH . 'includes/pdf-report.php';
