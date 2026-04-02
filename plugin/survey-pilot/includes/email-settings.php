@@ -14,7 +14,17 @@ add_action('admin_init', function () {
     register_setting('sp_email_settings', 'sp_smtp_host');
     register_setting('sp_email_settings', 'sp_smtp_port');
     register_setting('sp_email_settings', 'sp_smtp_user');
-    register_setting('sp_email_settings', 'sp_smtp_pass');
+    register_setting('sp_email_settings', 'sp_smtp_pass', [
+    'sanitize_callback' => function ($value) {
+        if (empty($value)) {
+            return get_option('sp_smtp_pass'); 
+        }
+        $key = AUTH_KEY; 
+        $iv = substr(hash('sha256', AUTH_SALT), 0, 16);
+
+        return openssl_encrypt($value, 'AES-256-CBC', $key, 0, $iv);
+    }
+]);
 });
 
 //This creates a menu item dropdown under Settings called Email Settings
@@ -73,7 +83,7 @@ function sp_render_email_settings() {
 
                 <tr>
                     <th>Password</th>
-                    <td><input type="password" name="sp_smtp_pass" value="<?php echo esc_attr(get_option('sp_smtp_pass')); ?>"></td>
+                    <td><input type="password" name="sp_smtp_pass" value=""></td>
                 </tr>
             </table>
 
@@ -105,7 +115,10 @@ add_action('phpmailer_init', function ($phpmailer) {
     $phpmailer->Port = get_option('sp_smtp_port', 587);
     $phpmailer->SMTPAuth = true;
     $phpmailer->Username = get_option('sp_smtp_user');
-    $phpmailer->Password = get_option('sp_smtp_pass');
+    $encrypted = get_option('sp_smtp_pass');
+    $key = AUTH_KEY;
+    $iv = substr(hash('sha256', AUTH_SALT), 0, 16);
+    $phpmailer->Password = openssl_decrypt($encrypted, 'AES-256-CBC', $key, 0, $iv);
     $phpmailer->SMTPSecure = 'tls';
 
     $phpmailer->From = get_option('admin_email');
