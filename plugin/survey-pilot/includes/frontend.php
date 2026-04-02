@@ -248,8 +248,8 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
 
 
     //generate email content with the survey title, questions and answers in a table format  
-    $message = '<h2>Survey Report</h2>';
     $message .= '<p>Thank you for completing the survey: <strong>' . esc_html($survey_title) . '</strong></p>';
+    $message .= '<p>Attached below is a PDF report summarizing your responses and how they compare to others.</p>';
 
     $subject = 'Your Survey Submission: ' . $survey_title;
 
