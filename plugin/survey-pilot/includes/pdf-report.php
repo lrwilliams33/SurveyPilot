@@ -46,6 +46,22 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $populati
 
         $page_results = $individual_results[$page] ?? [];
 
+        $values = array_values($page_results);
+        $mean = $population_means[$page] ?? 0;
+        $variance = 0;
+        $count = count($values);
+
+        if ($count > 0){
+            foreach ($values as $val) {
+                $variance += pow($val - $mean, 2);
+            }
+            $variance /= $count;
+            $stddev = sqrt($variance);
+        }
+        else{
+            $stddev = null;
+        }
+
         $below = 0;
 
         foreach ($page_results as $any_response_id => $user_composite) {
@@ -67,9 +83,14 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $populati
         $category_stats[$page] = [
             'composite' => $data['composite'],
             'mean' => $population_means[$page] ?? 0,
+            'stddev' => $stddev,
             'percentile' => $percentile
         ];
     }
+
+    //load IBSTPI image into pdf
+    $logo_path = SP_PATH . 'assets/images/ibstpi_logo.jpg';
+    $logo_data = base64_encode(file_get_contents($logo_path));
 
     //create html for the pdf 
     $html = '
@@ -79,7 +100,8 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $populati
             body {
                 font-family: Helvetica, Arial, sans-serif;
                 font-size: 12px;
-                color: #333;
+                color: #222;
+                background-color: #fff;
             }
 
             h1 {
@@ -89,9 +111,10 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $populati
 
             h2 {
                 font-size: 16px;
-                margin-top: 25px;
+                font-weight: bold;
+                margin-top: 20px;
                 margin-bottom: 10px;
-                border-bottom: 2px solid #eee;
+                border-bottom: 2px solid #e5e5e5;
                 padding-bottom: 5px;
             }
 
@@ -100,8 +123,33 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $populati
                 margin-top: 15px;
             }
 
-            .meta {
-                margin-bottom: 15px;
+            .header {
+                position: relative;
+                margin-bottom: 25px;
+                background-color: #fff;
+                padding: 20px;
+            }
+
+            .logo {
+                position: absolute;
+                top: -10px;
+                right: 0;
+            }
+
+            .survey-title {
+                text-align: center;
+                font-weight: bold;
+                padding-right: 140px;
+                font-size: 24px;
+                color: #222;
+            }
+
+            .response-id {
+                text-align: center;
+                font-size: 12px;
+                margin-top: -5px;
+                padding-right: 140px;
+                color: #777;
             }
 
             table {
@@ -110,13 +158,7 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $populati
                 margin-bottom: 10px;
             }
 
-            th {
-                background: #f5f5f5;
-                font-weight: bold;
-            }
-
             th, td {
-                border: 1px solid #ddd;
                 padding: 6px;
                 text-align: left;
             }
@@ -126,24 +168,67 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $populati
                 background: #ddd;
                 margin: 20px 0;
             }
+
+            .stats-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 10px;
+            }
+
+            .stats-table th {
+                background-color: #1f1f1f;
+                color: #ffffff;
+                padding: 8px;
+                text-align: left;
+            }
+
+            .stats-table td {
+                padding: 8px;
+                border-bottom: 1px solid #e5e5e5;
+            }
+
+            .qa-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 10px;
+            }
+
+            .qa-table th {
+                background-color: #f4f4f4;
+                padding: 8px;
+                text-align: left;
+            }
+
+            .qa-table td {
+                padding: 8px;
+                border-bottom: 1px solid #e5e5e5;
+            }
+
+            .stats-table tbody tr:nth-child(even),
+            .qa-table tbody tr:nth-child(even) {
+                background-color: #fafafa;
+            }
         </style>
     </head>
     <body>
     ';
 
     //PDF header
-    $html .= '<h1>Survey Report</h1>';
-    $html .= '<div class="meta">';
-    $html .= '<strong>Survey:</strong> ' . esc_html($survey_title) . '<br>';
-    $html .= '<strong>Response ID:</strong> ' . intval($response_id);
+    $html .= '<div class="header">';
+    $html .= '<img class="logo" src="data:image/jpeg;base64,' . $logo_data . '" width="120">';
+    $html .= '<h1 class="survey-title">' . esc_html($survey_title) . '</h1>';
+    $html .= '<p class="response-id">
+              Response ID: ' . intval($response_id) . '
+              </p>';
     $html .= '</div>';
 
     $html .= '<h2>Summary Statistics</h2>';
-    $html .= '<table>';
+    $html .= '<table class="stats-table">';
     $html .= '<thead><tr>
                 <th>Category</th>
                 <th>Composite Score</th>
                 <th>Population Mean</th>
+                <th>Standard Deviation</th>
                 <th>Percentile</th>
               </tr></thead><tbody>';
 
@@ -153,8 +238,11 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $populati
         $html .= '<td>Category ' . intval($page) . '</td>';
         $html .= '<td>' . number_format($stat['composite'], 2) . '</td>';
         $html .= '<td>' . number_format($stat['mean'], 2) . '</td>';
+        $html .= '<td>' . ($stat['stddev'] !== null 
+                ? number_format($stat['stddev'], 2) 
+                : 'N/A') . '</td>';
         $html .= '<td>' . ($stat['percentile'] !== null 
-            ? number_format($stat['percentile'], 2) . '%' 
+            ? number_format($stat['percentile'], 1) . '%' 
             : 'N/A') . '</td>';
         $html .= '</tr>';
     }
@@ -167,7 +255,7 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $populati
     foreach ($categories as $page => $data) {
 
         $html .= '<h3>Category ' . intval($page) . '</h3>';
-        $html .= '<table>';
+        $html .= '<table class="qa-table">';
         $html .= '<thead><tr>
                     <th>Question</th>
                     <th>Answer</th>
