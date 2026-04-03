@@ -741,6 +741,37 @@
       });
     }
 
+    // --- Email messaging checkbox toggle ---
+    const emailMessagingCheckbox = document.getElementById("sp_email_messaging");
+    const emailMessageRow        = document.getElementById("sp-email-message-row");
+    const emailMessageTextarea   = document.getElementById("sp_email_message");
+    const emailMessageError      = document.getElementById("sp-email-message-error");
+    const sendPdfRow             = document.getElementById("sp-send-pdf-row");
+    const sendPdfCheckbox        = document.getElementById("sp_send_pdf_report");
+
+    if (emailMessagingCheckbox) {
+      emailMessagingCheckbox.addEventListener("change", () => {
+        const checked = emailMessagingCheckbox.checked;
+        if (emailMessageRow) emailMessageRow.style.display = checked ? "" : "none";
+        if (sendPdfRow)      sendPdfRow.style.display      = checked ? "" : "none";
+        if (!checked) {
+          if (emailMessageError) emailMessageError.style.display = "none";
+          emailMessageTextarea?.classList.remove("sp-input-error");
+          // Also uncheck the PDF checkbox when email is disabled
+          if (sendPdfCheckbox) sendPdfCheckbox.checked = false;
+        }
+      });
+    }
+
+    if (emailMessageTextarea && emailMessageError) {
+      emailMessageTextarea.addEventListener("input", () => {
+        if (emailMessageTextarea.value.trim()) {
+          emailMessageError.style.display = "none";
+          emailMessageTextarea.classList.remove("sp-input-error");
+        }
+      });
+    }
+
     if (form && questionsError) {
       form.addEventListener("submit", (e) => {
 
@@ -751,12 +782,21 @@
 
         if (!titleVal) {
           syncBlocked = true;
-          showTitleError("Please enter a survey title.");
+          showTitleError("Survey Title is required.");
           titleInput?.scrollIntoView({ behavior: "smooth", block: "center" });
         } else if (titleIsDuplicate) {
           syncBlocked = true;
           showTitleError("A survey with this name already exists.");
           titleInput?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+
+        if (emailMessagingCheckbox?.checked && emailMessageTextarea && !emailMessageTextarea.value.trim()) {
+          syncBlocked = true;
+          if (emailMessageError) emailMessageError.style.display = "";
+          emailMessageTextarea.classList.add("sp-input-error");
+          if (titleVal && !titleIsDuplicate) {
+            emailMessageTextarea.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
         }
 
         if (!questionsList.querySelector(".sp-question-card")) {
@@ -966,10 +1006,126 @@
     }
   }
 
+  function initEmailSettings() {
+    const modeSelect   = document.getElementById("sp_email_mode");
+    const configForm   = document.getElementById("sp-email-config-form");
+    const testForm     = document.getElementById("sp-test-email-form");
+    if (!modeSelect && !testForm) return;
+
+    const smtpRows = document.querySelectorAll(".sp-smtp-row");
+
+    function toggleSmtpRows() {
+      const show = modeSelect && modeSelect.value === "smtp";
+      smtpRows.forEach((row) => {
+        row.style.display = show ? "" : "none";
+      });
+    }
+
+    if (modeSelect) {
+      toggleSmtpRows();
+      modeSelect.addEventListener("change", toggleSmtpRows);
+    }
+
+    if (configForm) {
+      configForm.addEventListener("submit", (e) => {
+        let hasError = false;
+
+        if (modeSelect && modeSelect.value === "smtp") {
+          const smtpFields = [
+            { inputId: "sp_smtp_host", errorId: "sp-smtp-host-error" },
+            { inputId: "sp_smtp_port", errorId: "sp-smtp-port-error" },
+            { inputId: "sp_smtp_user", errorId: "sp-smtp-user-error" },
+            { inputId: "sp_smtp_pass", errorId: "sp-smtp-pass-error" },
+          ];
+
+          smtpFields.forEach(({ inputId, errorId }) => {
+            const input = document.getElementById(inputId);
+            const error = document.getElementById(errorId);
+            if (!input || !error) return;
+            if (!input.value.trim()) {
+              error.style.display = "";
+              input.classList.add("sp-input-error");
+              hasError = true;
+              input.addEventListener("input", () => {
+                error.style.display = "none";
+                input.classList.remove("sp-input-error");
+              }, { once: true });
+            } else {
+              error.style.display = "none";
+              input.classList.remove("sp-input-error");
+            }
+          });
+        }
+
+        if (hasError) e.preventDefault();
+      });
+    }
+
+    const sendBtn      = document.getElementById("sp-send-test-email-btn");
+    const recipientInput = document.getElementById("sp_test_email_to");
+    const recipientError = document.getElementById("sp-test-email-error");
+    const resultBox    = document.getElementById("sp-test-result-box");
+
+    if (sendBtn && recipientInput) {
+      sendBtn.addEventListener("click", async () => {
+        const emailVal = recipientInput.value.trim();
+        const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal);
+
+        if (!emailValid) {
+          recipientError.style.display = "";
+          recipientInput.classList.add("sp-input-error");
+          if (resultBox) resultBox.style.display = "none";
+          recipientInput.addEventListener("input", () => {
+            recipientError.style.display = "none";
+            recipientInput.classList.remove("sp-input-error");
+          }, { once: true });
+          return;
+        }
+
+        recipientError.style.display = "none";
+        recipientInput.classList.remove("sp-input-error");
+
+        sendBtn.disabled = true;
+        sendBtn.textContent = "Sending…";
+        if (resultBox) resultBox.style.display = "none";
+
+        try {
+          const params = new URLSearchParams({
+            action: "sp_send_test_email",
+            nonce: spAdmin.testEmailNonce,
+            email: emailVal,
+          });
+          const res = await fetch(spAdmin.ajaxUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: params,
+          });
+          const data = await res.json();
+
+          if (resultBox) {
+            resultBox.textContent = data.data?.message ?? (data.success ? "Email sent successfully." : "Email failed to send.");
+            resultBox.className = "sp-test-result-box " + (data.success ? "sp-test-result-box-success" : "sp-test-result-box-error");
+            resultBox.style.display = "";
+          }
+        } catch {
+          if (resultBox) {
+            resultBox.textContent = "An unexpected error occurred. Please try again.";
+            resultBox.className = "sp-test-result-box sp-test-result-box-error";
+            resultBox.style.display = "";
+          }
+        } finally {
+          sendBtn.disabled = false;
+          sendBtn.textContent = "Send Test Email";
+        }
+      });
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     initAutoExpand();
     initQuestionBuilder();
     initDashboardCards();
     initSortAndDrag();
+    initEmailSettings();
   });
 })();

@@ -36,7 +36,7 @@
 }
 
 .sp-survey-list-label {
-    font-size: 30px;
+    font-size: 28px;
     font-weight: 600;
     color: #1d2327;
     margin-left: 6px;
@@ -479,6 +479,64 @@
     flex: 3;
 }
 
+.sp-dashboard-left h2 {
+    font-size: 24px;
+}
+
+.sp-email-page .sp-dashboard-right {
+    flex: 3;
+}
+
+.sp-email-page .sp-dashboard-left h2:first-of-type {
+    margin-top: 16px;
+}
+
+.sp-dashboard hr {
+    border: none;
+    border-top: 2px solid #e4e4e4;
+}
+
+.sp-email-page .sp-dashboard-right h2 {
+    font-size: 28px;
+}
+
+.sp-email-page .sp-dashboard-right p,
+.sp-email-page .sp-dashboard-right li {
+    font-size: 18px;
+}
+
+.sp-email-guide-list,
+.sp-email-guide-values {
+    margin-left: 24px;
+    margin-bottom: 0;
+}
+
+.sp-email-page .sp-dashboard-right p + .sp-email-guide-list {
+    margin-top: 4px;
+}
+
+.sp-email-guide-list {
+    list-style: decimal;
+}
+
+.sp-email-guide-values {
+    list-style: disc;
+}
+
+.sp-email-page .sp-dashboard-right a {
+    color: #2271b1;
+    text-decoration: underline;
+}
+
+.sp-email-page .sp-dashboard-right a:hover {
+    color: #135e96;
+    text-decoration: underline;
+}
+
+.sp-email-page .sp-dashboard-right hr {
+    margin: 14px 0;
+}
+
 /* Right column is sidebar */
 .sp-dashboard-right {
     flex: 1;
@@ -488,11 +546,11 @@
     padding: 24px 24px 32px 24px;
     border-radius: 6px;
     line-height: 1.5;
-    font-size: 20px;
+    font-size: 18px;
 }
 
 .sp-dashboard-right h2 {
-    font-size: 30px;
+    font-size: 28px;
     margin-top: 0;
     margin-bottom: 12px;
 }
@@ -500,7 +558,7 @@
 .sp-dashboard-right p {
     margin-top: 0;
     margin-bottom: 12px;
-    font-size: 20px;
+    font-size: 18px;
 }
 
 .sp-dashboard-right p:last-of-type {
@@ -520,11 +578,11 @@
 
 .sp-dashboard-right li {
     margin-bottom: 8px;
-    font-size: 24px;
+    font-size: 18px;
 }
 
 .sp-dashboard-right code {
-    font-size: 18px;
+    font-size: 17px;
     padding: 3px 5px;
 }
 
@@ -543,12 +601,15 @@
 }
 
 .sp-questions-heading {
-    margin-top: 28px;
+    margin-top: 55px;
+}
+
+.sp-admin-page .description {
+    font-size: 15px;
 }
 
 .sp-questions-heading + .description {
     margin-bottom: 16px;
-    font-size: 15px;
 }
 
 #sp-question-builder {
@@ -899,9 +960,99 @@
     width: 150px;
 }
 
+.sp-email-page .form-table th,
+.sp-admin-page .form-table th.sp-th-middle {
+    vertical-align: middle;
+}
+
+.sp-email-page .form-table select {
+    font-size: 16px;
+}
+
+#sp-send-test-email-btn {
+    margin-top: 20px;
+}
+
+#sp-save-settings-btn {
+    margin-top: 16px;
+    margin-bottom: 24px;
+    display: block;
+}
+
+.sp-test-result-box {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 12px 0 0;
+    padding: 10px 14px;
+    border-radius: 6px;
+    border: 1px solid;
+}
+
+.sp-test-result-box-success {
+    color: #0a4a1f;
+    background: #ecf9f0;
+    border-color: #a8d5b5;
+}
+
+.sp-test-result-box-error {
+    color: #d63638;
+    background: #fce8e8;
+    border-color: #f5c6cb;
+}
+
+#sp_smtp_port::-webkit-outer-spin-button,
+#sp_smtp_port::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+#sp_smtp_port {
+    appearance: textfield;
+}
+
 .sp-admin-page textarea.sp-fixed-textarea {
     resize: none;
     height: 72px;
     max-height: 72px;
     overflow-y: auto;
+}
+
+#sp_email_messaging, #sp_send_pdf_report {
+    transform: scale(1.4);
+    transform-origin: center;
+    cursor: pointer;
+}
+
+.sp-email-options-row {
+    display: flex;
+    align-items: center;
+    gap: 109px;
+    margin-top: 12px;
+    margin-bottom: 14px;
+    margin-left: 33px;
+    padding: 0 2px;
+}
+
+.sp-email-option-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.sp-email-option-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1d2327;
+    white-space: nowrap;
+    min-width: 157px;
+    text-align: center;
+}
+
+#sp-email-message-row {
+    margin-top: 0;
+}
+
+#sp-email-message-row th {
+    vertical-align: top;
+    text-align: center;
 }

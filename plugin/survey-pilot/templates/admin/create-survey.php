@@ -26,7 +26,7 @@
 
         <table class="form-table">
             <tr>
-                <th><label for="sp_survey_title">Survey Title<span class="sp-required" aria-hidden="true">*</span></label></th>
+                <th class="sp-th-middle"><label for="sp_survey_title">Survey Title<span class="sp-required" aria-hidden="true">*</span></label></th>
                 <td>
                     <input
                         type="text"
@@ -35,7 +35,7 @@
                         class="regular-text"
                         value="<?php echo $is_edit ? esc_attr($survey['title']) : ''; ?>"
                     >
-                    <p id="sp-title-error" class="sp-field-error" style="display:none;">Please enter a survey title.</p>
+                    <p id="sp-title-error" class="sp-field-error" style="display:none;">Survey Title is required.</p>
                 </td>
             </tr>
 
@@ -60,7 +60,50 @@
                     ><?php echo $is_edit && !empty($survey['instructions']) ? esc_textarea($survey['instructions']) : ''; ?></textarea>
                 </td>
             </tr>
+
         </table>
+
+        <h2 class="sp-questions-heading">Email Messaging</h2>
+        <p class="description">After someone submits a response to this survey, you can send them an email with a custom message. You can also attach a PDF report with their results and comparisons to others.</p>
+
+        <div class="sp-email-options-row">
+            <div class="sp-email-option-item">
+                <label class="sp-email-option-label" for="sp_email_messaging">Send Email Message</label>
+                <input
+                    type="checkbox"
+                    name="sp_email_messaging"
+                    id="sp_email_messaging"
+                    value="1"
+                    <?php if ($is_edit && !empty($survey['send_email_message'])) echo 'checked'; ?>
+                >
+            </div>
+            <div class="sp-email-option-item" id="sp-send-pdf-row" <?php if (!$is_edit || empty($survey['send_email_message'])) echo 'style="display:none;"'; ?>>
+                <label class="sp-email-option-label" for="sp_send_pdf_report">Send PDF Results Report</label>
+                <input
+                    type="checkbox"
+                    name="sp_send_pdf_report"
+                    id="sp_send_pdf_report"
+                    value="1"
+                    <?php if ($is_edit && !empty($survey['send_pdf_report'])) echo 'checked'; ?>
+                >
+            </div>
+        </div>
+
+        <table class="form-table" id="sp-email-message-row" <?php if (!$is_edit || empty($survey['send_email_message'])) echo 'style="display:none;"'; ?>>
+            <tr>
+                <th><label for="sp_email_message">Message<span class="sp-required" aria-hidden="true">*</span></label></th>
+                <td>
+                    <textarea
+                        name="sp_email_message"
+                        id="sp_email_message"
+                        class="regular-text sp-fixed-textarea"
+                    ><?php echo $is_edit && !empty($survey['email_message']) ? esc_textarea($survey['email_message']) : ''; ?></textarea>
+                    <p id="sp-email-message-error" class="sp-field-error" style="display:none;">Message is required when "Send Email Message" is checked.</p>
+                </td>
+            </tr>
+        </table>
+
+        <p class="description">Configure email delivery in the <a href="<?php echo esc_url(admin_url('admin.php?page=sp-email-settings')); ?>">Email Settings</a> page.</p>
 
         <h2 class="sp-questions-heading">Questions</h2>
         <p class="description">Add Likert scale questions for this survey.</p>
@@ -140,6 +183,7 @@
                         }
                         ?>
                         <div class="sp-question-card" data-question-index="<?php echo esc_attr($question_index); ?>">
+                            <input type="hidden" name="sp_questions[<?php echo esc_attr($question_index); ?>][id]" value="<?php echo esc_attr($question['id'] ?? ''); ?>">
                             <input type="hidden" class="sp-page-input" name="sp_questions[<?php echo esc_attr($question_index); ?>][page]" value="<?php echo esc_attr($current_page); ?>">
                             <div class="sp-question-header">
                                 <span class="sp-question-label">Question <span class="sp-question-number"></span></span>
@@ -154,7 +198,7 @@
                                         class="regular-text sp-question-textarea"
                                         name="sp_questions[<?php echo esc_attr($question_index); ?>][text]"
                                     ><?php echo esc_textarea($question['question_text']); ?></textarea>
-                                    <p class="sp-field-error sp-qtext-error" style="display:none;">Question text is required.</p>
+                                    <p class="sp-field-error sp-qtext-error" style="display:none;">Question Text is required.</p>
                                 </div>
                                 <div class="sp-field">
                                     <label>Scale Options</label>
@@ -213,6 +257,7 @@
 
             <div id="sp-question-template" style="display:none;">
                 <div class="sp-question-card" data-question-index="__INDEX__">
+                    <input type="hidden" name="sp_questions[__INDEX__][id]" value="">
                     <input type="hidden" class="sp-page-input" name="sp_questions[__INDEX__][page]" value="1">
                     <div class="sp-question-header">
                         <span class="sp-question-label">Question <span class="sp-question-number"></span></span>
@@ -227,7 +272,7 @@
                                 class="regular-text sp-question-textarea"
                                 name="sp_questions[__INDEX__][text]"
                             ></textarea>
-                            <p class="sp-field-error sp-qtext-error" style="display:none;">Question text is required.</p>
+                            <p class="sp-field-error sp-qtext-error" style="display:none;">Question Text is required.</p>
                         </div>
                         <div class="sp-field">
                             <label>Scale Options</label>

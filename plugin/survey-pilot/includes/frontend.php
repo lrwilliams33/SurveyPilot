@@ -179,15 +179,26 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
     $questions_table = $wpdb->prefix . 'survey_questions';
     $answers_table = $wpdb->prefix . 'survey_response_answers';
 
-    //get the survey title for the survey submitted
     $survey = $wpdb->get_row(
         $wpdb->prepare(
-            "SELECT title FROM $survey_table WHERE id = %d",
+            "SELECT title, send_email_message, email_message, send_pdf_report FROM $survey_table WHERE id = %d",
             $survey_id
         )
     );
 
-    $survey_title = $survey ? $survey->title : 'Survey';
+    // If email messaging is turned off for this survey, do nothing.
+    if (!$survey || empty((int) $survey->send_email_message)) {
+        return;
+    }
+
+    $email_message = trim((string) $survey->email_message);
+    if ($email_message === '') {
+        return;
+    }
+
+    $include_pdf = !empty((int) $survey->send_pdf_report);
+
+    $survey_title = $survey->title ? $survey->title : 'Survey';
 
     //get questions and answers for the submitted survey response
     //join the answers and questions table and fetch information using the response id 
@@ -247,25 +258,25 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
     }
 
 
-    //generate email content with the survey title, questions and answers in a table format  
-    $message .= '<p>Thank you for completing the survey: <strong>' . esc_html($survey_title) . '</strong></p>';
-    $message .= '<p>Attached below is a PDF report summarizing your responses and how they compare to others.</p>';
+    // Build email body from the admin-defined message.
+    $message = wpautop(esc_html($email_message));
 
     $subject = 'Your Survey Submission: ' . $survey_title;
 
     $headers = ['Content-Type: text/html; charset=UTF-8'];
 
-    //attachments field contains our PDF attachment from the upload_dir directory
     $attachments = [];
-    //call the survey PDF generation function 
-    $pdf_path = sp_generate_survey_pdf($survey_title, $response_id, $results, $population_means, $formatted_individual_results);
-    if (!is_wp_error($pdf_path)) {
-        $attachments[] = $pdf_path;
-    }
-    else{
-        error_log('SP: PDF generation failed: ' . $pdf_path->get_error_message());
-        if (is_wp_error($pdf_path) && $pdf_path->get_error_code() === 'sp_no_dompdf') {
-            error_log('SP: Dompdf library is missing. Please run composer install to include dependencies.');
+
+    if ($include_pdf) {
+        $message .= '<p>Attached below is a PDF report summarizing your responses and how they compare to others.</p>';
+        $pdf_path = sp_generate_survey_pdf($survey_title, $response_id, $results, $population_means, $formatted_individual_results);
+        if (!is_wp_error($pdf_path)) {
+            $attachments[] = $pdf_path;
+        } else {
+            error_log('SP: PDF generation failed: ' . $pdf_path->get_error_message());
+            if ($pdf_path->get_error_code() === 'sp_no_dompdf') {
+                error_log('SP: Dompdf library is missing. Please run composer install to include dependencies.');
+            }
         }
     }
 

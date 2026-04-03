@@ -17,6 +17,9 @@ function add_tables(){
         survey_description TEXT NULL,
         instructions TEXT NULL,
         page_headers LONGTEXT NULL,
+        send_email_message TINYINT(1) NOT NULL DEFAULT 0,
+        email_message TEXT NULL,
+        send_pdf_report TINYINT(1) NOT NULL DEFAULT 0,
         sort_order INT UNSIGNED NOT NULL DEFAULT 0,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -85,7 +88,7 @@ Following functions are for adding rows to the tables
 */
 
 //This function adds into the survey_info table to store created surveys
-function sp_add_survey_info_row($title, $description = null, $instructions = null, $page_headers = null) {
+function sp_add_survey_info_row($title, $description = null, $instructions = null, $page_headers = null, $send_email_message = 0, $email_message = null, $send_pdf_report = 0) {
     global $wpdb;
 
     //fetch the title, description, and instructions and format
@@ -94,20 +97,29 @@ function sp_add_survey_info_row($title, $description = null, $instructions = nul
     $instructions = sanitize_textarea_field($instructions);
     // page_headers is already a JSON string or null; sanitize as text
     $page_headers = ($page_headers !== null && $page_headers !== '') ? sanitize_textarea_field($page_headers) : null;
+    $send_email_message = $send_email_message ? 1 : 0;
+    $email_message = ($email_message !== null && $email_message !== '') ? sanitize_textarea_field($email_message) : null;
+    $send_pdf_report = $send_pdf_report ? 1 : 0;
 
     $insert_status = $wpdb->insert(
         $wpdb->prefix . 'survey_info',
         [
-            'title'              => $title,
-            'survey_description' => $description,
-            'instructions'       => $instructions,
-            'page_headers'       => $page_headers,
+            'title'               => $title,
+            'survey_description'  => $description,
+            'instructions'        => $instructions,
+            'page_headers'        => $page_headers,
+            'send_email_message'  => $send_email_message,
+            'email_message'       => $email_message,
+            'send_pdf_report'     => $send_pdf_report,
         ],
         [
             '%s',
             '%s',
             '%s',
             '%s',
+            '%d',
+            '%s',
+            '%d',
         ]
     );
 
@@ -316,7 +328,7 @@ function sp_save_survey_submission($survey_id, array $answers, $user_id = null) 
 /**
  * Update survey_info fields (title/description/instructions) and always bump updated_at.
  */
-function sp_update_survey_info_row($survey_id, $title, $description = null, $instructions = null, $page_headers = null) {
+function sp_update_survey_info_row($survey_id, $title, $description = null, $instructions = null, $page_headers = null, $send_email_message = 0, $email_message = null, $send_pdf_report = 0) {
     global $wpdb;
 
     $survey_id = intval($survey_id);
@@ -328,15 +340,21 @@ function sp_update_survey_info_row($survey_id, $title, $description = null, $ins
     $description = sanitize_textarea_field($description);
     $instructions = sanitize_textarea_field($instructions);
     $page_headers = ($page_headers !== null && $page_headers !== '') ? sanitize_textarea_field($page_headers) : null;
+    $send_email_message = $send_email_message ? 1 : 0;
+    $email_message = ($email_message !== null && $email_message !== '') ? sanitize_textarea_field($email_message) : null;
+    $send_pdf_report = $send_pdf_report ? 1 : 0;
 
     $update_status = $wpdb->update(
         $wpdb->prefix . 'survey_info',
         [
-            'title'              => $title,
-            'survey_description' => $description,
-            'instructions'       => $instructions,
-            'page_headers'       => $page_headers,
-            'updated_at'         => current_time('mysql'),
+            'title'               => $title,
+            'survey_description'  => $description,
+            'instructions'        => $instructions,
+            'page_headers'        => $page_headers,
+            'send_email_message'  => $send_email_message,
+            'email_message'       => $email_message,
+            'send_pdf_report'     => $send_pdf_report,
+            'updated_at'          => current_time('mysql'),
         ],
         [
             'id' => $survey_id
@@ -346,6 +364,9 @@ function sp_update_survey_info_row($survey_id, $title, $description = null, $ins
             '%s',
             '%s',
             '%s',
+            '%d',
+            '%s',
+            '%d',
             '%s',
         ],
         [

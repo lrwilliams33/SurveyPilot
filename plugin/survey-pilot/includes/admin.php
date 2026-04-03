@@ -34,7 +34,7 @@ add_action('admin_menu', function() {
 
 add_action('admin_enqueue_scripts', function() {
     $page = isset($_GET['page']) ? sanitize_key($_GET['page']) : '';
-    if (!in_array($page, ['survey-pilot', 'sp-create-survey'], true)) {
+    if (!in_array($page, ['survey-pilot', 'sp-create-survey', 'sp-email-settings'], true)) {
         return;
     }
 
@@ -42,14 +42,14 @@ add_action('admin_enqueue_scripts', function() {
         'survey-pilot-admin',
         SP_URL . 'assets/css/admin.css',
         [],
-        '1.8'
+        '2.0'
     );
 
     wp_enqueue_script(
         'survey-pilot-admin',
         SP_URL . 'assets/js/admin.js',
         [],
-        '1.8',
+        '2.0',
         true
     );
 
@@ -60,6 +60,7 @@ add_action('admin_enqueue_scripts', function() {
         'ajaxUrl'         => admin_url('admin-ajax.php'),
         'nonce'           => wp_create_nonce('sp_save_survey_order'),
         'exportNonce'     => wp_create_nonce('sp_export_survey_csv'),
+        'testEmailNonce'  => wp_create_nonce('sp_send_test_email'),
         'surveyTitles'    => array_values($existing_titles),
     ]);
 });
@@ -287,7 +288,15 @@ function sp_handle_create_survey() {
 
     $page_headers_json = sp_build_page_headers_json();
 
-    $survey_id = sp_add_survey_info_row($survey_title, $description, $instructions, $page_headers_json);
+    $send_email_message = !empty($_POST['sp_email_messaging']) ? 1 : 0;
+    $email_message      = isset($_POST['sp_email_message']) ? sanitize_textarea_field(wp_unslash($_POST['sp_email_message'])) : null;
+    $send_pdf_report    = ($send_email_message && !empty($_POST['sp_send_pdf_report'])) ? 1 : 0;
+
+    if ($send_email_message && empty(trim($email_message ?? ''))) {
+        wp_die('Message is required when "Send Email Message" is checked.', 'Validation Error', ['back_link' => true]);
+    }
+
+    $survey_id = sp_add_survey_info_row($survey_title, $description, $instructions, $page_headers_json, $send_email_message, $email_message, $send_pdf_report);
 
     if (is_wp_error($survey_id)) {
         wp_die('Failed to create survey.');
@@ -335,7 +344,15 @@ function sp_handle_edit_survey() {
 
     $page_headers_json = sp_build_page_headers_json();
 
-    $update_result = sp_update_survey_info_row($survey_id, $survey_title, $description, $instructions, $page_headers_json);
+    $send_email_message = !empty($_POST['sp_email_messaging']) ? 1 : 0;
+    $email_message      = isset($_POST['sp_email_message']) ? sanitize_textarea_field(wp_unslash($_POST['sp_email_message'])) : null;
+    $send_pdf_report    = ($send_email_message && !empty($_POST['sp_send_pdf_report'])) ? 1 : 0;
+
+    if ($send_email_message && empty(trim($email_message ?? ''))) {
+        wp_die('Message is required when "Send Email Message" is checked.', 'Validation Error', ['back_link' => true]);
+    }
+
+    $update_result = sp_update_survey_info_row($survey_id, $survey_title, $description, $instructions, $page_headers_json, $send_email_message, $email_message, $send_pdf_report);
 
     if (is_wp_error($update_result)) {
         wp_die('Failed to update survey.');
@@ -396,7 +413,10 @@ function sp_handle_duplicate_survey() {
         $new_title,
         $original['survey_description'],
         $original['instructions'],
-        isset($original['page_headers']) ? $original['page_headers'] : null
+        isset($original['page_headers']) ? $original['page_headers'] : null,
+        isset($original['send_email_message']) ? (int) $original['send_email_message'] : 0,
+        isset($original['email_message']) ? $original['email_message'] : null,
+        isset($original['send_pdf_report']) ? (int) $original['send_pdf_report'] : 0
     );
 
     if (is_wp_error($new_survey_id) || !$new_survey_id) {
@@ -499,10 +519,113 @@ function sp_replace_survey_questions_from_post($survey_id) {
         return;
     }
 
-    $questions_table = $wpdb->prefix . 'survey_questions';
-    $wpdb->delete($questions_table, ['survey_id' => $survey_id], ['%d']);
+    if (!isset($_POST['sp_questions']) || !is_array($_POST['sp_questions'])) {
+        return;
+    }
 
-    sp_save_survey_questions_from_post($survey_id);
+    $questions_table = $wpdb->prefix . 'survey_questions';
+    $questions = $_POST['sp_questions'];
+    $order = 1;
+    $submitted_ids = [];
+
+    foreach ($questions as $question) {
+        $question_text = isset($question['text']) ? trim(wp_unslash($question['text'])) : '';
+        if ($question_text === '') {
+            $order++;
+            continue;
+        }
+
+        $existing_id  = isset($question['id']) ? absint($question['id']) : 0;
+        $page_number  = isset($question['page']) ? max(1, intval($question['page'])) : 1;
+        $scale_rows   = isset($question['scale']) && is_array($question['scale']) ? $question['scale'] : [];
+
+        $values = [];
+        $labels = [];
+
+        foreach ($scale_rows as $row) {
+            $value = isset($row['value']) ? intval($row['value']) : null;
+            if ($value === null || $value <= 0) continue;
+            $values[] = $value;
+            $labels[$value] = isset($row['label']) ? trim(wp_unslash($row['label'])) : '';
+        }
+
+        if (!empty($values)) {
+            sort($values);
+            $values = array_unique($values);
+            $scale_min = (int) reset($values);
+            $scale_max = (int) end($values);
+        } else {
+            $scale_min = 1;
+            $scale_max = 5;
+        }
+
+        $labels_complete = [];
+        for ($v = $scale_min; $v <= $scale_max; $v++) {
+            $labels_complete[$v] = isset($labels[$v]) ? $labels[$v] : '';
+        }
+        $scale_labels = wp_json_encode($labels_complete);
+
+        if ($existing_id > 0) {
+            // Verify this question actually belongs to this survey before updating.
+            $owner = $wpdb->get_var(
+                $wpdb->prepare(
+                    "SELECT survey_id FROM $questions_table WHERE id = %d LIMIT 1",
+                    $existing_id
+                )
+            );
+
+            if ((int) $owner === $survey_id) {
+                $wpdb->update(
+                    $questions_table,
+                    [
+                        'question_text'  => sanitize_textarea_field($question_text),
+                        'scale_min'      => $scale_min,
+                        'scale_max'      => $scale_max,
+                        'scale_labels'   => $scale_labels,
+                        'question_order' => $order,
+                        'page_number'    => $page_number,
+                    ],
+                    ['id' => $existing_id],
+                    ['%s', '%d', '%d', '%s', '%d', '%d'],
+                    ['%d']
+                );
+                $submitted_ids[] = $existing_id;
+                $order++;
+                continue;
+            }
+        }
+
+        // No valid existing ID — insert as new question.
+        $new_id = sp_add_survey_question_row(
+            $survey_id,
+            $question_text,
+            $order,
+            $scale_min,
+            $scale_max,
+            $scale_labels,
+            $page_number
+        );
+
+        if ($new_id && !is_wp_error($new_id)) {
+            $submitted_ids[] = $new_id;
+        }
+
+        $order++;
+    }
+
+    // Delete questions that were removed in the editor (not in the submitted list).
+    if (!empty($submitted_ids)) {
+        $placeholders = implode(',', array_fill(0, count($submitted_ids), '%d'));
+        $wpdb->query(
+            $wpdb->prepare(
+                "DELETE FROM $questions_table WHERE survey_id = %d AND id NOT IN ($placeholders)",
+                array_merge([$survey_id], $submitted_ids)
+            )
+        );
+    } else {
+        // All questions were removed.
+        $wpdb->delete($questions_table, ['survey_id' => $survey_id], ['%d']);
+    }
 }
 
 // Handle Delete Action
