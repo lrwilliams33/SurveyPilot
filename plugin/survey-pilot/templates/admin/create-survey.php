@@ -6,6 +6,16 @@
     $nonce_action = $is_edit ? 'sp_edit_survey_nonce' : 'sp_create_survey_nonce';
     $submit_label = $is_edit ? 'Update Survey' : 'Create Survey';
     $questions = isset($questions) && is_array($questions) ? $questions : [];
+    $sp_survey_response_count = isset($sp_survey_response_count) ? (int) $sp_survey_response_count : 0;
+    $structure_locked         = $is_edit && !empty($survey) && $sp_survey_response_count > 0;
+    $response_count_label = sprintf(
+        _n('%s response', '%s responses', $sp_survey_response_count, 'survey-pilot'),
+        number_format_i18n($sp_survey_response_count)
+    );
+    $edit_status_class = $sp_survey_response_count === 0 ? 'sp-survey-edit-status--full' : 'sp-survey-edit-status--partial';
+    $edit_status_text  = $sp_survey_response_count === 0
+        ? __('Fully Editable', 'survey-pilot')
+        : __('Partially Editable', 'survey-pilot');
     ?>
 
     <div class="sp-admin-header">
@@ -13,8 +23,19 @@
             <img src="<?php echo esc_url(SP_URL . 'assets/images/back-arrow.svg'); ?>" alt="<?php esc_attr_e('Back to Dashboard', 'survey-pilot'); ?>" class="sp-back-arrow" width="28" height="28">
         </a>
         <h1><?php echo esc_html($page_title); ?></h1>
+        <?php if ($is_edit) : ?>
+            <span class="sp-survey-response-count sp-admin-header-status">
+                <?php echo esc_html($response_count_label); ?>
+                <span class="sp-survey-response-count-sep"> &rarr; </span>
+                <span class="sp-survey-edit-status <?php echo esc_attr($edit_status_class); ?>"><?php echo esc_html($edit_status_text); ?></span>
+            </span>
+        <?php endif; ?>
     </div>
 
+    <hr class="sp-section-divider">
+
+    <div class="sp-dashboard-content">
+        <div class="sp-dashboard-left">
     <form method="post" action="<?php echo admin_url('admin-post.php'); ?>">
         <?php wp_nonce_field($nonce_action); ?>
         <input type="hidden" name="action" value="<?php echo esc_attr($action_value); ?>">
@@ -63,6 +84,8 @@
 
         </table>
 
+        <hr class="sp-section-divider">
+
         <h2 class="sp-questions-heading">Email Messaging</h2>
         <p class="description">After someone submits a response to this survey, you can send them an email with a custom message. You can also attach a PDF report with their results and comparisons to others.</p>
 
@@ -103,21 +126,25 @@
             </tr>
         </table>
 
-        <p class="description">Configure email delivery in the <a href="<?php echo esc_url(admin_url('admin.php?page=sp-email-settings')); ?>">Email Settings</a> page.</p>
+        <p class="description sp-email-delivery-note">Configure email delivery in the <a href="<?php echo esc_url(admin_url('admin.php?page=sp-email-settings')); ?>">Email Settings</a> page.</p>
+
+        <hr class="sp-section-divider">
 
         <h2 class="sp-questions-heading">Questions</h2>
         <p class="description">Add Likert scale questions for this survey.</p>
         <span id="sp-trash-icon-url" data-src="<?php echo esc_url(SP_URL . 'assets/images/trash-can.svg'); ?>" aria-hidden="true" style="display:none;"></span>
+        <span id="sp-arrow-icon-urls" data-up="<?php echo esc_url(SP_URL . 'assets/images/up-arrow.png'); ?>" data-down="<?php echo esc_url(SP_URL . 'assets/images/down-arrow.png'); ?>" aria-hidden="true" style="display:none;"></span>
 
         <?php
-        $page_headers_decoded = [];
-        if ($is_edit && !empty($survey['page_headers'])) {
-            $decoded_ph = json_decode($survey['page_headers'], true);
-            if (is_array($decoded_ph)) {
-                $page_headers_decoded = $decoded_ph;
+        $saved_survey_layout = ($is_edit && isset($survey['survey_layout']) && $survey['survey_layout'] !== '') ? $survey['survey_layout'] : null;
+        $layout_blocks       = sp_admin_survey_layout_blocks_for_display($questions, $saved_survey_layout);
+        $page1_header_value  = '';
+        foreach ($layout_blocks as $_pb) {
+            if (($_pb['type'] ?? '') === 'page_header' && (int) ($_pb['page'] ?? 0) === 1) {
+                $page1_header_value = (string) ($_pb['header'] ?? '');
+                break;
             }
         }
-        $page1_header_value = isset($page_headers_decoded[1]) ? $page_headers_decoded[1] : '';
         ?>
 
         <div class="sp-page-header-field" id="sp-page-1-header">
@@ -131,72 +158,127 @@
             >
         </div>
 
-        <div id="sp-question-builder" data-next-index="<?php echo esc_attr(count($questions)); ?>">
+        <div id="sp-question-builder" data-next-index="<?php echo esc_attr(count($questions)); ?>" data-sp-structure-locked="<?php echo $structure_locked ? '1' : '0'; ?>">
+            <input type="hidden" name="sp_survey_layout" id="sp_survey_layout" value="">
             <div id="sp-questions-list">
-                <?php if (!empty($questions)) :
-                    $prev_page = 1;
-                    foreach ($questions as $index => $question) :
-                        $question_index = (int) $index;
-                        $current_page = isset($question['page_number']) ? max(1, (int) $question['page_number']) : 1;
-
-                        if ($current_page > $prev_page) :
-                            $prev_page = $current_page;
-                            $ph_value = isset($page_headers_decoded[$current_page]) ? $page_headers_decoded[$current_page] : '';
+                <?php if (!empty($layout_blocks)) :
+                    $break_target_page = 2;
+                    $question_render_i = 0;
+                    foreach ($layout_blocks as $block) :
+                        $block_type = isset($block['type']) ? $block['type'] : '';
+                        if ($block_type === 'page_header') :
+                            // Page 1 header is edited in #sp-page-1-header above this list.
+                        elseif ($block_type === 'page_break') :
+                            $ph_value_pb = isset($block['header']) ? (string) $block['header'] : '';
                 ?>
                         <div class="sp-page-break">
                             <div class="sp-page-break-bar">
                                 <div class="sp-page-break-line"></div>
                                 <span class="sp-page-break-label">Page Break</span>
-                                <button type="button" class="button-link sp-page-break-remove" aria-label="Remove page break">
-                                    <img src="<?php echo esc_url(SP_URL . 'assets/images/trash-can.svg'); ?>" alt="" class="sp-trash-icon" width="18" height="18">
+                                <span class="sp-block-move-actions" role="group" aria-label="<?php esc_attr_e('Reorder', 'survey-pilot'); ?>">
+                                    <button type="button" class="button-link sp-move-btn sp-move-up" aria-label="<?php esc_attr_e('Move up', 'survey-pilot'); ?>"<?php echo $structure_locked ? ' disabled' : ''; ?>>
+                                        <img src="<?php echo esc_url(SP_URL . 'assets/images/up-arrow.png'); ?>" alt="" class="sp-move-icon" width="24" height="24" />
+                                    </button>
+                                    <button type="button" class="button-link sp-move-btn sp-move-down" aria-label="<?php esc_attr_e('Move down', 'survey-pilot'); ?>"<?php echo $structure_locked ? ' disabled' : ''; ?>>
+                                        <img src="<?php echo esc_url(SP_URL . 'assets/images/down-arrow.png'); ?>" alt="" class="sp-move-icon" width="24" height="24" />
+                                    </button>
+                                </span>
+                                <button type="button" class="button-link sp-page-break-remove" aria-label="Remove page break"<?php echo $structure_locked ? ' disabled' : ''; ?>>
+                                    <img src="<?php echo esc_url(SP_URL . 'assets/images/trash-can.svg'); ?>" alt="" class="sp-trash-icon" width="22" height="22">
                                 </button>
                                 <div class="sp-page-break-line"></div>
                             </div>
                             <div class="sp-page-header-field">
-                                <label class="sp-page-header-label">Page <span class="sp-page-number-display"><?php echo esc_html($current_page); ?></span> Header</label>
+                                <label class="sp-page-header-label">Page <span class="sp-page-number-display"><?php echo esc_html($break_target_page); ?></span> Header</label>
                                 <input
                                     type="text"
                                     class="regular-text sp-page-header-input"
-                                    name="sp_page_headers[<?php echo esc_attr($current_page); ?>]"
-                                    value="<?php echo esc_attr($ph_value); ?>"
+                                    name="sp_page_headers[<?php echo esc_attr($break_target_page); ?>]"
+                                    value="<?php echo esc_attr($ph_value_pb); ?>"
                                     placeholder="Optional page header…"
                                 >
                             </div>
                         </div>
-                <?php   endif; ?>
-                        <?php
-                        $scale_rows = [];
-                        $min = max(1, (int) ($question['scale_min'] ?? 1));
-                        $max = max($min, (int) ($question['scale_max'] ?? 5));
-                        $decoded = [];
-                        if (!empty($question['scale_labels'])) {
-                            $decoded = json_decode($question['scale_labels'], true);
-                            if (!is_array($decoded)) {
-                                $decoded = [];
+                <?php
+                            $break_target_page++;
+                        elseif ($block_type === 'text') :
+                            $text_body = isset($block['content']) ? (string) $block['content'] : '';
+                ?>
+                        <div class="sp-text-card">
+                            <div class="sp-question-header">
+                                <span class="sp-question-label">Text Content</span>
+                                <div class="sp-block-header-actions">
+                                    <span class="sp-block-move-actions" role="group" aria-label="<?php esc_attr_e('Reorder', 'survey-pilot'); ?>">
+                                        <button type="button" class="button-link sp-move-btn sp-move-up" aria-label="<?php esc_attr_e('Move up', 'survey-pilot'); ?>">
+                                            <img src="<?php echo esc_url(SP_URL . 'assets/images/up-arrow.png'); ?>" alt="" class="sp-move-icon" width="24" height="24" />
+                                        </button>
+                                        <button type="button" class="button-link sp-move-btn sp-move-down" aria-label="<?php esc_attr_e('Move down', 'survey-pilot'); ?>">
+                                            <img src="<?php echo esc_url(SP_URL . 'assets/images/down-arrow.png'); ?>" alt="" class="sp-move-icon" width="24" height="24" />
+                                        </button>
+                                    </span>
+                                    <button type="button" class="button-link sp-text-remove" aria-label="Delete text block">
+                                        <img src="<?php echo esc_url(SP_URL . 'assets/images/trash-can.svg'); ?>" alt="" class="sp-trash-icon" width="22" height="22">
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="sp-question-body">
+                                <div class="sp-field">
+                                    <label>Text<span class="sp-required" aria-hidden="true">*</span></label>
+                                    <textarea
+                                        class="regular-text sp-text-block-textarea sp-auto-expand"
+                                        rows="3"
+                                    ><?php echo esc_textarea($text_body); ?></textarea>
+                                    <p class="sp-field-error sp-text-block-error" style="display:none;">Text is required.</p>
+                                </div>
+                            </div>
+                        </div>
+                <?php
+                        elseif ($block_type === 'question' && isset($questions[$question_render_i])) :
+                            $question        = $questions[$question_render_i];
+                            $question_index  = $question_render_i;
+                            $scale_rows      = [];
+                            $min             = max(1, (int) ($question['scale_min'] ?? 1));
+                            $max             = max($min, (int) ($question['scale_max'] ?? 5));
+                            $decoded         = [];
+                            if (!empty($question['scale_labels'])) {
+                                $decoded_try = json_decode($question['scale_labels'], true);
+                                if (is_array($decoded_try)) {
+                                    $decoded = $decoded_try;
+                                }
                             }
-                        }
-                        for ($v = $min; $v <= $max; $v++) {
-                            $scale_rows[] = [
-                                'value' => $v,
-                                'label' => isset($decoded[$v]) ? (string) $decoded[$v] : '',
-                            ];
-                        }
-                        ?>
+                            for ($v = $min; $v <= $max; $v++) {
+                                $scale_rows[] = [
+                                    'value' => $v,
+                                    'label' => isset($decoded[$v]) ? (string) $decoded[$v] : '',
+                                ];
+                            }
+                            $question_render_i++;
+                ?>
                         <div class="sp-question-card" data-question-index="<?php echo esc_attr($question_index); ?>">
                             <input type="hidden" name="sp_questions[<?php echo esc_attr($question_index); ?>][id]" value="<?php echo esc_attr($question['id'] ?? ''); ?>">
-                            <input type="hidden" class="sp-page-input" name="sp_questions[<?php echo esc_attr($question_index); ?>][page]" value="<?php echo esc_attr($current_page); ?>">
                             <div class="sp-question-header">
                                 <span class="sp-question-label">Question <span class="sp-question-number"></span></span>
-                                <button type="button" class="button-link sp-question-remove" aria-label="Delete question">
-                                    <img src="<?php echo esc_url(SP_URL . 'assets/images/trash-can.svg'); ?>" alt="" class="sp-trash-icon" width="22" height="22">
-                                </button>
+                                <div class="sp-block-header-actions">
+                                    <span class="sp-block-move-actions" role="group" aria-label="<?php esc_attr_e('Reorder', 'survey-pilot'); ?>">
+                                        <button type="button" class="button-link sp-move-btn sp-move-up" aria-label="<?php esc_attr_e('Move up', 'survey-pilot'); ?>"<?php echo $structure_locked ? ' disabled' : ''; ?>>
+                                            <img src="<?php echo esc_url(SP_URL . 'assets/images/up-arrow.png'); ?>" alt="" class="sp-move-icon" width="24" height="24" />
+                                        </button>
+                                        <button type="button" class="button-link sp-move-btn sp-move-down" aria-label="<?php esc_attr_e('Move down', 'survey-pilot'); ?>"<?php echo $structure_locked ? ' disabled' : ''; ?>>
+                                            <img src="<?php echo esc_url(SP_URL . 'assets/images/down-arrow.png'); ?>" alt="" class="sp-move-icon" width="24" height="24" />
+                                        </button>
+                                    </span>
+                                    <button type="button" class="button-link sp-question-remove" aria-label="Delete question"<?php echo $structure_locked ? ' disabled' : ''; ?>>
+                                        <img src="<?php echo esc_url(SP_URL . 'assets/images/trash-can.svg'); ?>" alt="" class="sp-trash-icon" width="22" height="22">
+                                    </button>
+                                </div>
                             </div>
                             <div class="sp-question-body">
                                 <div class="sp-field">
                                     <label>Question Text<span class="sp-required" aria-hidden="true">*</span></label>
                                     <textarea
-                                        class="regular-text sp-question-textarea"
+                                        class="regular-text sp-question-textarea sp-auto-expand"
                                         name="sp_questions[<?php echo esc_attr($question_index); ?>][text]"
+                                        rows="3"
                                     ><?php echo esc_textarea($question['question_text']); ?></textarea>
                                     <p class="sp-field-error sp-qtext-error" style="display:none;">Question Text is required.</p>
                                 </div>
@@ -211,66 +293,49 @@
                                             </div>
                                         <?php endforeach; ?>
                                     </div>
-                                    <button type="button" class="button-secondary sp-add-scale">+ Add Option</button>
+                                    <button type="button" class="button-secondary sp-add-scale"<?php echo $structure_locked ? ' disabled' : ''; ?>>+ Add Option</button>
                                 </div>
                             </div>
                         </div>
-                    <?php endforeach; ?>
-
-                    <?php
-                    // Render trailing page breaks: page breaks placed after the last question.
-                    // Identified by page_headers keys greater than the highest question page number.
-                    if (!empty($page_headers_decoded)) :
-                        $max_header_page = max(array_map('intval', array_keys($page_headers_decoded)));
-                        for ($tp = $prev_page + 1; $tp <= $max_header_page; $tp++) :
-                            $ph_value = isset($page_headers_decoded[$tp]) ? $page_headers_decoded[$tp] : '';
-                    ?>
-                        <div class="sp-page-break">
-                            <div class="sp-page-break-bar">
-                                <div class="sp-page-break-line"></div>
-                                <span class="sp-page-break-label">Page Break</span>
-                                <button type="button" class="button-link sp-page-break-remove" aria-label="Remove page break">
-                                    <img src="<?php echo esc_url(SP_URL . 'assets/images/trash-can.svg'); ?>" alt="" class="sp-trash-icon" width="18" height="18">
-                                </button>
-                                <div class="sp-page-break-line"></div>
-                            </div>
-                            <div class="sp-page-header-field">
-                                <label class="sp-page-header-label">Page <span class="sp-page-number-display"><?php echo esc_html($tp); ?></span> Header</label>
-                                <input
-                                    type="text"
-                                    class="regular-text sp-page-header-input"
-                                    name="sp_page_headers[<?php echo esc_attr($tp); ?>]"
-                                    value="<?php echo esc_attr($ph_value); ?>"
-                                    placeholder="Optional page header…"
-                                >
-                            </div>
-                        </div>
-                    <?php   endfor; endif; ?>
-
-                <?php endif; ?>
+                <?php
+                        endif;
+                    endforeach;
+                endif; ?>
             </div>
 
             <div class="sp-question-builder-actions">
-                <button type="button" class="button sp-btn-large" id="sp-add-question">+ Add Question</button>
+                <button type="button" class="button sp-btn-large" id="sp-add-question"<?php echo $structure_locked ? ' disabled' : ''; ?>>+ Add Question</button>
+                <button type="button" class="button sp-btn-large" id="sp-add-text">+ Add Text</button>
                 <button type="button" class="button sp-btn-large" id="sp-add-page-break" disabled>+ Add Page Break</button>
             </div>
 
             <div id="sp-question-template" style="display:none;">
                 <div class="sp-question-card" data-question-index="__INDEX__">
-                    <input type="hidden" name="sp_questions[__INDEX__][id]" value="">
-                    <input type="hidden" class="sp-page-input" name="sp_questions[__INDEX__][page]" value="1">
+                    <input type="hidden" name="sp_questions[__INDEX__][id]" value="" disabled>
                     <div class="sp-question-header">
                         <span class="sp-question-label">Question <span class="sp-question-number"></span></span>
-                        <button type="button" class="button-link sp-question-remove" aria-label="Delete question">
-                            <img src="<?php echo esc_url(SP_URL . 'assets/images/trash-can.svg'); ?>" alt="" class="sp-trash-icon" width="22" height="22">
-                        </button>
+                        <div class="sp-block-header-actions">
+                            <span class="sp-block-move-actions" role="group" aria-label="Reorder">
+                                <button type="button" class="button-link sp-move-btn sp-move-up" aria-label="Move up" disabled>
+                                    <img src="<?php echo esc_url(SP_URL . 'assets/images/up-arrow.png'); ?>" alt="" class="sp-move-icon" width="24" height="24" />
+                                </button>
+                                <button type="button" class="button-link sp-move-btn sp-move-down" aria-label="Move down" disabled>
+                                    <img src="<?php echo esc_url(SP_URL . 'assets/images/down-arrow.png'); ?>" alt="" class="sp-move-icon" width="24" height="24" />
+                                </button>
+                            </span>
+                            <button type="button" class="button-link sp-question-remove" aria-label="Delete question" disabled>
+                                <img src="<?php echo esc_url(SP_URL . 'assets/images/trash-can.svg'); ?>" alt="" class="sp-trash-icon" width="22" height="22">
+                            </button>
+                        </div>
                     </div>
                     <div class="sp-question-body">
                         <div class="sp-field">
                             <label>Question Text<span class="sp-required" aria-hidden="true">*</span></label>
                             <textarea
-                                class="regular-text sp-question-textarea"
+                                class="regular-text sp-question-textarea sp-auto-expand"
                                 name="sp_questions[__INDEX__][text]"
+                                rows="3"
+                                disabled
                             ></textarea>
                             <p class="sp-field-error sp-qtext-error" style="display:none;">Question Text is required.</p>
                         </div>
@@ -279,13 +344,41 @@
                             <div class="sp-scale-rows">
                                 <?php for ($i = 0; $i < 5; $i++) : $val = $i + 1; ?>
                                     <div class="sp-scale-row" data-scale-value="<?php echo esc_attr($val); ?>">
-                                        <input type="hidden" name="sp_questions[__INDEX__][scale][<?php echo esc_attr($i); ?>][value]" value="<?php echo esc_attr($val); ?>">
-                                        <input type="number" class="small-text" value="<?php echo esc_attr($val); ?>" readonly>
-                                        <input type="text" class="regular-text" name="sp_questions[__INDEX__][scale][<?php echo esc_attr($i); ?>][label]" placeholder="Label for <?php echo esc_attr($val); ?>">
+                                        <input type="hidden" name="sp_questions[__INDEX__][scale][<?php echo esc_attr($i); ?>][value]" value="<?php echo esc_attr($val); ?>" disabled>
+                                        <input type="number" class="small-text" value="<?php echo esc_attr($val); ?>" readonly disabled>
+                                        <input type="text" class="regular-text" name="sp_questions[__INDEX__][scale][<?php echo esc_attr($i); ?>][label]" placeholder="Label for <?php echo esc_attr($val); ?>" disabled>
                                     </div>
                                 <?php endfor; ?>
                             </div>
-                            <button type="button" class="button-secondary sp-add-scale">+ Add Option</button>
+                            <button type="button" class="button-secondary sp-add-scale" disabled>+ Add Option</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="sp-text-card-template" style="display:none;">
+                <div class="sp-text-card">
+                    <div class="sp-question-header">
+                        <span class="sp-question-label">Text Content</span>
+                        <div class="sp-block-header-actions">
+                            <span class="sp-block-move-actions" role="group" aria-label="Reorder">
+                                <button type="button" class="button-link sp-move-btn sp-move-up" aria-label="Move up" disabled>
+                                    <img src="<?php echo esc_url(SP_URL . 'assets/images/up-arrow.png'); ?>" alt="" class="sp-move-icon" width="24" height="24" />
+                                </button>
+                                <button type="button" class="button-link sp-move-btn sp-move-down" aria-label="Move down" disabled>
+                                    <img src="<?php echo esc_url(SP_URL . 'assets/images/down-arrow.png'); ?>" alt="" class="sp-move-icon" width="24" height="24" />
+                                </button>
+                            </span>
+                            <button type="button" class="button-link sp-text-remove" aria-label="Delete text block" disabled>
+                                <img src="<?php echo esc_url(SP_URL . 'assets/images/trash-can.svg'); ?>" alt="" class="sp-trash-icon" width="22" height="22">
+                            </button>
+                        </div>
+                    </div>
+                    <div class="sp-question-body">
+                        <div class="sp-field">
+                            <label>Text<span class="sp-required" aria-hidden="true">*</span></label>
+                            <textarea class="regular-text sp-text-block-textarea sp-auto-expand" rows="3" disabled></textarea>
+                            <p class="sp-field-error sp-text-block-error" style="display:none;">Text is required.</p>
                         </div>
                     </div>
                 </div>
@@ -296,4 +389,18 @@
 
         <?php submit_button($submit_label, 'primary sp-btn-large'); ?>
     </form>
+        </div>
+
+        <div class="sp-dashboard-right">
+            <h2>Survey Editability</h2>
+            <p>SurveyPilot uses two editability states once a survey is created:</p>
+            <p><strong>Fully Editable</strong> means the survey has no responses yet, so you can freely modify both its structure and content.</p>
+            <p><strong>Partially Editable</strong> means the survey has responses. To preserve data integrity and aggregation, page structure is locked, but non-structural fields and text content can still be updated.</p>
+            <hr class="sp-sidebar-divider">
+            <h2>Page-Based Aggregation</h2>
+            <p>For the <strong>PDF Results Report</strong>, summary statistics are calculated separately for each page. Page structure is defined by where page breaks are placed in the survey builder.</p>
+            <p>Each page is treated as its own reporting section, with page headers used as labels in aggregated results.</p>
+            <p>Choose page break locations carefully to ensure the data is grouped and reported as intended.</p>
+        </div>
+    </div>
 </div>

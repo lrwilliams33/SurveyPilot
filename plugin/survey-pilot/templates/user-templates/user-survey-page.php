@@ -11,7 +11,7 @@ $questions = $wpdb->get_results(
         "SELECT *
         FROM {$wpdb->prefix}survey_questions
         WHERE survey_id = %d
-        ORDER BY page_number ASC, question_order ASC",
+        ORDER BY question_order ASC, id ASC",
         $sp_survey_id
     ),
     ARRAY_A
@@ -21,58 +21,23 @@ if (!$questions) {
     echo '<div class="sp-container"><p class="sp-notice">No questions found for this survey.</p></div>';
     return;
 }
-// Fetch page headers (JSON stored in survey_info.page_headers, keyed by page number)
-$page_headers = [];
+
 $survey_info = $wpdb->get_row(
     $wpdb->prepare(
-        "SELECT page_headers FROM {$wpdb->prefix}survey_info WHERE id = %d",
+        "SELECT survey_layout FROM {$wpdb->prefix}survey_info WHERE id = %d",
         $sp_survey_id
     ),
     ARRAY_A
 );
 
-if ($survey_info && !empty($survey_info['page_headers'])) {
-    $decoded_headers = json_decode($survey_info['page_headers'], true);
-    if (is_array($decoded_headers)) {
-        foreach ($decoded_headers as $page_num => $header_text) {
-            $page_num = (int) $page_num;
-            if ($page_num < 1) {
-                continue;
-            }
+$resolved = sp_user_resolve_survey_pages_and_headers(
+    $questions,
+    ($survey_info && !empty($survey_info['survey_layout'])) ? $survey_info['survey_layout'] : null
+);
 
-            $header_text = (string) $header_text;
-            if ($header_text === '') {
-                continue;
-            }
-
-            $page_headers[$page_num] = $header_text;
-        }
-
-        if (!empty($page_headers)) {
-            ksort($page_headers);
-        }
-    }
-}
-
-// Group questions by page number
-$pages = [];
-foreach ($questions as $q) {
-    $page_num = (int) ($q['page_number'] ?? 1);
-    if (!isset($pages[$page_num])) {
-        $pages[$page_num] = [];
-    }
-    $pages[$page_num][] = $q;
-}
-
-if (!empty($pages)) {
-    ksort($pages);
-}
-
-// Determine all page numbers (from questions and from page headers)
-$question_page_numbers = array_keys($pages);
-$header_page_numbers   = array_keys($page_headers);
-$all_page_numbers = array_unique(array_merge($question_page_numbers, $header_page_numbers));
-sort($all_page_numbers);
+$pages              = $resolved['pages'];
+$page_headers       = $resolved['page_headers'];
+$all_page_numbers   = $resolved['all_page_numbers'];
 
 if (empty($all_page_numbers)) {
     echo '<div class="sp-container"><p class="sp-notice">No pages found for this survey.</p></div>';
@@ -93,24 +58,13 @@ if (!in_array($current_page, $all_page_numbers, true)) {
 }
 
 $total_pages = count($all_page_numbers);
-$current_questions = $pages[$current_page] ?? [];
 
-// Group current page's questions that share the same scale into table groups
-$groups = [];
-$current_group = [];
-$prev_key = null;
+$layout_json = ($survey_info && !empty($survey_info['survey_layout'])) ? $survey_info['survey_layout'] : null;
+$segments = sp_user_page_render_segments($current_page, $questions, $layout_json);
 
-foreach ($current_questions as $q) {
-    $key = $q['scale_min'] . '|' . $q['scale_max'] . '|' . ($q['scale_labels'] ?? '');
-    if ($prev_key !== null && $key !== $prev_key) {
-        $groups[] = ['key' => $prev_key, 'questions' => $current_group];
-        $current_group = [];
-    }
-    $current_group[] = $q;
-    $prev_key = $key;
-}
-if (!empty($current_group)) {
-    $groups[] = ['key' => $prev_key, 'questions' => $current_group];
+$question_numbers_by_id = [];
+foreach ($questions as $idx => $q_row) {
+    $question_numbers_by_id[ (int) $q_row['id'] ] = $idx + 1;
 }
 ?>
 
@@ -119,10 +73,6 @@ if (!empty($current_group)) {
     <?php if (!empty($page_headers[$current_page])) : ?>
         <h2><?php echo esc_html($page_headers[$current_page]); ?></h2>
     <?php endif; ?>
-
-    <div class="sp-page-indicator">
-        <span class="sp-page-number">Page <?php echo $current_page; ?> of <?php echo $total_pages; ?></span>
-    </div>
 
     <?php
     $confirmation_url = esc_url(admin_url('admin-post.php'));
@@ -136,19 +86,30 @@ if (!empty($current_group)) {
 
     <?php
     wp_nonce_field('sp_submit_survey');
-    $question_number = 1;
 
-    foreach (array_slice(array_keys($pages), 0, array_search($current_page, array_keys($pages))) as $prev_page) {
-        $question_number += count($pages[$prev_page]);
-    }
+    foreach ($segments as $segment) :
+        $seg_type = $segment['type'] ?? '';
+        if ($seg_type === 'text') :
+            $text_content = isset($segment['content']) ? (string) $segment['content'] : '';
+            if ($text_content === '') {
+                continue;
+            }
+            ?>
+        <div class="sp-layout-text"><?php echo nl2br(esc_html($text_content)); ?></div>
+            <?php
+            continue;
+        endif;
 
-    foreach ($groups as $group) :
-        $group_questions = $group['questions'];
-        $sample = $group_questions[0];
-        $scale_min   = (int) $sample['scale_min'];
-        $scale_max   = (int) $sample['scale_max'];
-        $scale_labels = $sample['scale_labels'] ?? '';
-        $labels = [];
+        if ($seg_type !== 'question_table' || empty($segment['questions'])) {
+            continue;
+        }
+
+        $group_questions = $segment['questions'];
+        $sample          = $group_questions[0];
+        $scale_min       = (int) $sample['scale_min'];
+        $scale_max       = (int) $sample['scale_max'];
+        $scale_labels    = $sample['scale_labels'] ?? '';
+        $labels          = [];
         if (!empty($scale_labels)) {
             $decoded = json_decode($scale_labels, true);
             if (is_array($decoded)) {
@@ -156,9 +117,15 @@ if (!empty($current_group)) {
             }
         }
 
-        $group_first = $question_number;
-        $group_last  = $question_number + count($group_questions) - 1;
-    ?>
+        $nums = [];
+        foreach ($group_questions as $gq) {
+            $nums[] = $question_numbers_by_id[ (int) $gq['id'] ] ?? 0;
+        }
+        $nums = array_values(array_filter($nums));
+        sort($nums, SORT_NUMERIC);
+        $group_first = $nums ? (int) $nums[0] : 0;
+        $group_last  = $nums ? (int) $nums[ count($nums) - 1 ] : 0;
+        ?>
 
         <div class="sp-table-wrapper">
             <table class="sp-question-table">
@@ -166,14 +133,14 @@ if (!empty($current_group)) {
                     <tr>
                         <th class="sp-q-col">
                             <?php if ($group_first === $group_last) : ?>
-                                Question <?php echo $group_first; ?>
+                                Question <?php echo (int) $group_first; ?>
                             <?php else : ?>
-                                Questions <?php echo $group_first; ?> through <?php echo $group_last; ?>
+                                Questions <?php echo (int) $group_first; ?> through <?php echo (int) $group_last; ?>
                             <?php endif; ?>
                         </th>
                         <?php for ($i = $scale_min; $i <= $scale_max; $i++) :
                             $val_label = isset($labels[$i]) ? $labels[$i] : '';
-                        ?>
+                            ?>
                             <th>
                                 <?php echo $i; ?>
                                 <?php if ($val_label !== '') : ?>
@@ -186,9 +153,10 @@ if (!empty($current_group)) {
                 <tbody>
                 <?php foreach ($group_questions as $q) :
                     $question_id = (int) $q['id'];
-                ?>
+                    $disp_num    = $question_numbers_by_id[ $question_id ] ?? 0;
+                    ?>
                     <tr>
-                        <td class="sp-q-col"><?php echo $question_number . '. ' . esc_html($q['question_text']); ?></td>
+                        <td class="sp-q-col"><?php echo (int) $disp_num; ?>. <?php echo esc_html($q['question_text']); ?></td>
                         <?php for ($i = $scale_min; $i <= $scale_max; $i++) : ?>
                             <td class="sp-radio-cell">
                                 <input
@@ -202,16 +170,18 @@ if (!empty($current_group)) {
                             </td>
                         <?php endfor; ?>
                     </tr>
-                <?php
-                    $question_number++;
-                endforeach; ?>
+                <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
 
-    <?php
+        <?php
     endforeach;
     ?>
+
+        <div class="sp-page-indicator sp-page-indicator--footer">
+            <span class="sp-page-number">Page <?php echo (int) $current_page; ?> of <?php echo (int) $total_pages; ?></span>
+        </div>
 
         <div class="sp-navigation">
             <?php if ($current_page > 1) : 

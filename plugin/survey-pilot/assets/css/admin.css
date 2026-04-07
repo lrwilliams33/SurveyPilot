@@ -44,6 +44,7 @@
 
 .sp-no-surveys {
     font-size: 15px;
+    margin-left: 7px;
 }
 
 .sp-list-header-right {
@@ -75,34 +76,6 @@
 }
 
 
-/* Drag-and-drop visual states */
-
-.sp-survey-card.sp-dragging {
-    opacity: 0.4;
-    box-shadow: none;
-}
-
-.sp-survey-card.sp-drop-above::before,
-.sp-survey-card.sp-drop-below::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: #2271b1;
-    border-radius: 1px;
-    pointer-events: none;
-    z-index: 1;
-}
-
-.sp-survey-card.sp-drop-above::before {
-    top: -9.5px;
-}
-
-.sp-survey-card.sp-drop-below::after {
-    bottom: -9.5px;
-}
-
 .sp-admin-page .wrap {
     margin-top: 0;
     padding-top: 0;
@@ -113,7 +86,7 @@
     align-items: center;
     gap: 12px;
     margin-top: 0;
-    margin-bottom: 16px;
+    margin-bottom: 10px;
     padding-top: 10px;
     padding-bottom: 10px;
 }
@@ -124,6 +97,11 @@
     line-height: 1.2;
     display: flex;
     align-items: center;
+}
+
+.sp-admin-header .sp-admin-header-status {
+    margin-left: 8px;
+    white-space: nowrap;
 }
 
 .sp-back-link {
@@ -174,7 +152,7 @@
     position: relative;
     background: #fff;
     border: 1px solid #ddd;
-    padding: 16px 16px 16px 16px;
+    padding: 16px 16px 10px 16px;
     margin-bottom: 15px;
     display: flex;
     justify-content: space-between;
@@ -204,6 +182,12 @@
 .sp-survey-info {
     flex: 1;
     min-width: 0; /* allows ellipsis to work in flex layout */
+    /* Clicks in “empty” gaps between title / description / shortcode row hit the card beneath. */
+    pointer-events: none;
+}
+
+.sp-survey-info * {
+    pointer-events: auto;
 }
 
 .sp-survey-title {
@@ -220,6 +204,36 @@
     text-overflow: ellipsis;
 }
 
+.sp-survey-response-count {
+    display: block;
+    width: fit-content;
+    font-size: 14px;
+    font-weight: 500;
+    color: #646970;
+    line-height: 1.35;
+    margin-top: 2px;
+    max-width: 90%;
+    white-space: normal;
+    cursor: text;
+}
+
+.sp-survey-response-count-sep {
+    color: #646970;
+    font-weight: 500;
+}
+
+.sp-survey-edit-status {
+    font-weight: 600;
+}
+
+.sp-survey-edit-status--full {
+    color: #008a20;
+}
+
+.sp-survey-edit-status--partial {
+    color: #d97706;
+}
+
 .sp-survey-desc {
     display: block;
     width: fit-content;
@@ -234,28 +248,84 @@
     cursor: text;
 }
 
-.sp-survey-shortcode-display {
+.sp-survey-shortcode-box {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    padding: 6px 8px;
+    margin-right: 14px;
+    background: #f0f0f1;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    box-sizing: border-box;
+    /* Padding / flex gaps: default arrow (not I-beam from code); copy button keeps pointer. */
+    cursor: default;
+}
+
+/* Inner row; center so copy stays a fixed size (stretch + aspect-ratio grew huge on multi-line shortcodes). */
+.sp-survey-shortcode-inline {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.sp-survey-shortcode-display {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 0;
+    row-gap: 6px;
     margin-top: 6px;
     margin-bottom: 4px;
     line-height: 1.35;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    /* Full-width row: only the gray shortcode well uses default cursor, not empty space to the right. */
+    cursor: inherit;
 }
 
-.sp-survey-shortcode-display code {
+.sp-survey-shortcode-display .sp-survey-response-count {
+    margin-top: 0;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.sp-survey-shortcode-box code {
     cursor: text;
+    font-size: 14px;
+    color: #1d2327;
+    background: #fff;
+    padding: 3px 8px;
+    border-radius: 2px;
+    border: 1px solid #c3c4c7;
+    font-family: Consolas, Monaco, monospace;
+    user-select: text;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
 }
 
-.sp-survey-shortcode-display code {
-    font-size: 14px;
-    color: #444;
-    background: #f0f0f1;
-    padding: 2px 6px;
-    border-radius: 3px;
-    border: 1px solid #ddd;
-    font-family: monospace;
-    user-select: all;
+/* Fixed size; shorter than width with vertical margin so it sits visually centered vs code. */
+.sp-survey-shortcode-box .sp-copy-btn {
+    box-sizing: border-box;
+    flex-shrink: 0;
+    width: 28px;
+    height: 26px;
+    min-width: 28px;
+    min-height: 26px;
+    margin-top: 1px;
+    margin-bottom: 1px;
+    border: 1px solid #c3c4c7;
+    cursor: pointer;
+}
+
+.sp-survey-shortcode-box .sp-copy-icon {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
 }
 
 .sp-copy-btn {
@@ -271,20 +341,28 @@
     border: none;
     background: transparent;
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .sp-copy-btn:hover {
-    background: #ebebeb;
+    background: #fff;
 }
 
 .sp-copy-btn:focus {
-    background: #ebebeb;
+    background: #fff;
     outline: none;
 }
 
-.sp-copy-btn.sp-copied {
+.sp-copy-btn:focus-visible {
+    outline: 2px solid #2271b1;
+    outline-offset: 1px;
+}
+
+.sp-copy-btn.sp-copied,
+.sp-copy-btn.sp-copied:hover,
+.sp-copy-btn.sp-copied:focus {
     background: #d7f5e0;
+    outline: none;
 }
 
 .sp-copy-icon {
@@ -312,6 +390,104 @@
 .sp-draft {
     background: #f8d7da;
     color: #721c24;
+}
+
+.sp-survey-card-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.sp-survey-reorder-actions {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.sp-custom-order-mode .sp-survey-reorder-actions {
+    display: inline-flex;
+}
+
+.sp-survey-move-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 28px;
+    padding: 0;
+    margin: 0;
+    border-radius: 6px;
+    border: 2px solid #1d2327;
+    background: #fff;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+    transition: background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.sp-survey-move-btn:hover:not(:disabled):not(:focus) {
+    background: #f0f0f1;
+    border-color: #000;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+}
+
+.sp-survey-move-btn:focus {
+    outline: none;
+}
+
+.sp-survey-move-btn:focus:not(:disabled) {
+    background: #f0f0f1;
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #fff, 0 0 0 3px #2271b1;
+}
+
+.sp-survey-move-btn:active:not(:disabled) {
+    background: #e8e8ea;
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #fff, 0 0 0 3px #2271b1, 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+/* WP core (.wp-core-ui .button…) can set not-allowed on disabled; use normal arrow for unclickable reorder. */
+.wp-core-ui button.button-link.sp-survey-move-btn:disabled,
+.wp-core-ui button.button-link.sp-survey-move-btn[disabled],
+.wp-core-ui button.button-link.sp-survey-move-btn:disabled:hover,
+.wp-core-ui button.button-link.sp-survey-move-btn[disabled]:hover,
+button.button-link.sp-survey-move-btn:disabled,
+button.button-link.sp-survey-move-btn[disabled],
+button.button-link.sp-survey-move-btn:disabled:hover,
+button.button-link.sp-survey-move-btn[disabled]:hover {
+    cursor: default !important;
+    pointer-events: auto;
+    background: #fff;
+    border-color: #c3c4c7;
+    box-shadow: none;
+}
+
+.sp-survey-move-btn:disabled .sp-survey-move-icon,
+.sp-survey-move-btn[disabled] .sp-survey-move-icon {
+    opacity: 0.38;
+}
+
+.sp-survey-card:hover:not(.sp-nohover) button.sp-survey-move-btn:disabled,
+.sp-survey-card:hover:not(.sp-nohover) button.sp-survey-move-btn[disabled] {
+    background: #f5f5f5;
+}
+
+/* When the paired enabled arrow is active, drop disabled chrome so a gray box doesn’t sit under the hover/focus ring. */
+.sp-survey-reorder-actions:has(.sp-survey-move-btn:hover:not(:disabled)) button.sp-survey-move-btn:disabled,
+.sp-survey-reorder-actions:has(.sp-survey-move-btn:hover:not(:disabled)) button.sp-survey-move-btn[disabled],
+.sp-survey-reorder-actions:has(.sp-survey-move-btn:focus:not(:disabled)) button.sp-survey-move-btn:disabled,
+.sp-survey-reorder-actions:has(.sp-survey-move-btn:focus:not(:disabled)) button.sp-survey-move-btn[disabled] {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.sp-survey-move-icon {
+    display: block;
+    object-fit: contain;
+    pointer-events: none;
 }
 
 .sp-survey-actions .button {
@@ -479,7 +655,7 @@
     flex: 3;
 }
 
-.sp-dashboard-left h2 {
+.sp-dashboard .sp-dashboard-left h2 {
     font-size: 24px;
 }
 
@@ -494,6 +670,24 @@
 .sp-dashboard hr {
     border: none;
     border-top: 2px solid #e4e4e4;
+}
+
+.sp-admin-page .sp-section-divider,
+.sp-dashboard-right .sp-sidebar-divider {
+    border: none;
+    border-top: 2px solid #e4e4e4;
+}
+
+.sp-admin-page .sp-section-divider {
+    margin: 8px 0;
+}
+
+.sp-admin-page .sp-email-delivery-note {
+    margin-bottom: 20px;
+}
+
+.sp-dashboard-right .sp-sidebar-divider {
+    margin: 18px 0 14px;
 }
 
 .sp-email-page .sp-dashboard-right h2 {
@@ -601,7 +795,7 @@
 }
 
 .sp-questions-heading {
-    margin-top: 55px;
+    margin-top: 20px;
 }
 
 .sp-admin-page .description {
@@ -613,7 +807,7 @@
 }
 
 #sp-question-builder {
-    max-width: 35%;
+    max-width: 49%;
     margin-top: 8px;
 }
 
@@ -629,11 +823,26 @@
     margin-top: 0 !important;
 }
 
+#sp-add-question:disabled,
 #sp-add-page-break:disabled {
     opacity: 0.55;
-    cursor: not-allowed;
+    cursor: default;
     pointer-events: none;
     color: #50575e !important;
+}
+
+.sp-question-remove:disabled,
+.sp-page-break-remove:disabled,
+.sp-scale-row-remove:disabled {
+    opacity: 0.38;
+    cursor: default;
+    pointer-events: none;
+}
+
+.sp-question-card .sp-add-scale:disabled {
+    opacity: 0.55;
+    cursor: default;
+    pointer-events: none;
 }
 
 .sp-page-break {
@@ -646,7 +855,7 @@
 .sp-page-break-bar {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
 }
 
 .sp-page-header-field {
@@ -692,12 +901,84 @@
     letter-spacing: 0.06em;
 }
 
+.sp-block-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.sp-block-move-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.sp-move-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: 5px;
+    border: 1px solid #c3c4c7;
+    background: #f6f7f7;
+    color: #1d2327;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    text-decoration: none;
+}
+
+.sp-move-btn:hover:not(:disabled),
+.sp-move-btn:focus:not(:disabled) {
+    background: #fff;
+    border-color: #2271b1;
+    color: #2271b1;
+}
+
+/* Question & text: hover chip matches WP admin page background; arrow images unchanged */
+.sp-question-card .sp-move-btn:hover:not(:disabled),
+.sp-text-card .sp-move-btn:hover:not(:disabled),
+.sp-question-card .sp-move-btn:focus:not(:disabled),
+.sp-text-card .sp-move-btn:focus:not(:disabled) {
+    background: #f0f0f1;
+    border-color: #f0f0f1;
+}
+
+.sp-question-card .sp-move-btn:hover:not(:disabled) .sp-move-icon,
+.sp-text-card .sp-move-btn:hover:not(:disabled) .sp-move-icon,
+.sp-question-card .sp-move-btn:focus:not(:disabled) .sp-move-icon,
+.sp-text-card .sp-move-btn:focus:not(:disabled) .sp-move-icon {
+    filter: none;
+}
+
+/* Match #sp-add-page-break:disabled — grayed out, no forbidden cursor (pointer passes through) */
+.sp-move-btn:disabled {
+    opacity: 0.38;
+    cursor: default;
+    pointer-events: none;
+}
+
+.sp-move-btn:disabled .sp-move-icon {
+    filter: none;
+}
+
+.sp-move-btn .sp-move-icon {
+    display: block;
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+    transition: filter 0.15s ease;
+}
+
 .sp-page-break-remove {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     padding: 0;
     border-radius: 5px;
     border: 1px solid #b0bec5;
@@ -718,22 +999,60 @@
     object-fit: contain;
 }
 
-.sp-admin-page textarea.sp-question-textarea {
+.sp-admin-page textarea.sp-question-textarea,
+.sp-admin-page textarea.sp-text-block-textarea {
     resize: none;
-    height: 48px;
-    max-height: 48px;
+    box-sizing: border-box;
+    line-height: 1.5;
+    min-height: calc(1.5em * 3 + 12px);
+    max-height: 320px;
     overflow-y: auto;
     display: block;
     margin-top: 10px;
     width: 75%;
 }
 
-.sp-question-card {
+.sp-question-card,
+.sp-text-card {
     margin-top: 16px;
     border: 1px solid #ddd;
     border-radius: 6px;
     padding: 14px 16px;
     background: #fff;
+}
+
+.sp-text-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border-radius: 6px;
+    border: 2px solid #1d2327;
+    background: #fce8e8;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+    transition: background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.sp-text-remove:hover,
+.sp-text-remove:focus {
+    background: #fad2d2;
+    border-color: #b32d2e;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+}
+
+.sp-text-remove .sp-trash-icon,
+.sp-text-remove .dashicons {
+    display: block;
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+}
+
+.sp-text-remove .dashicons {
+    color: #d63638;
 }
 
 .sp-question-header {

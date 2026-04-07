@@ -204,7 +204,7 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
     //join the answers and questions table and fetch information using the response id 
     $results = $wpdb->get_results(
         $wpdb->prepare(
-            "SELECT q.question_text, q.scale_labels, q.page_number, a.answer_value
+            "SELECT q.id AS question_id, q.question_text, q.scale_labels, a.answer_value
              FROM $answers_table a
              JOIN $questions_table q
              ON a.question_id = q.id
@@ -214,46 +214,84 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
         )
     );
 
-    global $wpdb;
+    $id_to_page = function_exists('sp_get_question_id_to_page_map')
+        ? sp_get_question_id_to_page_map($survey_id)
+        : [];
 
+    foreach ($results as $row) {
+        $qid = (int) $row->question_id;
+        $row->page_number = $id_to_page[ $qid ] ?? 1;
+    }
 
-    $population_means = [];
+    $population_means               = [];
+    $formatted_individual_results   = [];
 
     if ($survey_id > 0) {
 
         $answers_table = $wpdb->prefix . 'survey_response_answers';
         $questions_table = $wpdb->prefix . 'survey_questions';
 
-        $population_results = $wpdb->get_results($wpdb->prepare("
-            SELECT 
-                q.page_number,
-                AVG(a.answer_value) AS avg_score
-            FROM $answers_table a
-            JOIN $questions_table q 
-                ON a.question_id = q.id
-            WHERE q.survey_id = %d
-            GROUP BY q.page_number
-        ", $survey_id));
+        $population_raw = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT q.id AS question_id, a.answer_value
+                 FROM $answers_table a
+                 JOIN $questions_table q ON a.question_id = q.id
+                 WHERE q.survey_id = %d",
+                $survey_id
+            )
+        );
 
-        foreach ($population_results as $row) {
-            $population_means[$row->page_number] = (float)$row->avg_score;
+        $sums   = [];
+        $counts = [];
+        foreach ($population_raw as $row) {
+            $qid = (int) $row->question_id;
+            $pn  = $id_to_page[ $qid ] ?? 1;
+            if (!isset($sums[ $pn ])) {
+                $sums[ $pn ]   = 0;
+                $counts[ $pn ] = 0;
+            }
+            $sums[ $pn ]   += (int) $row->answer_value;
+            $counts[ $pn ]++;
+        }
+        foreach ($sums as $pn => $total) {
+            $population_means[ $pn ] = $counts[ $pn ] > 0 ? (float) $total / $counts[ $pn ] : 0.0;
         }
 
-        $all_individual_results = $wpdb->get_results($wpdb->prepare("
-            SELECT 
-                a.response_id,
-                q.page_number,
-                AVG(a.answer_value) AS user_composite
-            FROM $answers_table a
-            JOIN $questions_table q 
-                ON a.question_id = q.id
-            WHERE q.survey_id = %d
-            GROUP BY a.response_id, q.page_number
-        ", $survey_id));
+        $individual_raw = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT a.response_id, q.id AS question_id, a.answer_value
+                 FROM $answers_table a
+                 JOIN $questions_table q ON a.question_id = q.id
+                 WHERE q.survey_id = %d",
+                $survey_id
+            )
+        );
 
-        $formatted_individual_results = [];
-        foreach ($all_individual_results as $row) {
-            $formatted_individual_results[$row->page_number][$row->response_id] = (float)$row->user_composite;
+        $resp_sums   = [];
+        $resp_counts = [];
+        foreach ($individual_raw as $row) {
+            $rid = (int) $row->response_id;
+            $qid = (int) $row->question_id;
+            $pn  = $id_to_page[ $qid ] ?? 1;
+            if (!isset($resp_sums[ $rid ])) {
+                $resp_sums[ $rid ]   = [];
+                $resp_counts[ $rid ] = [];
+            }
+            if (!isset($resp_sums[ $rid ][ $pn ])) {
+                $resp_sums[ $rid ][ $pn ]   = 0;
+                $resp_counts[ $rid ][ $pn ] = 0;
+            }
+            $resp_sums[ $rid ][ $pn ]   += (int) $row->answer_value;
+            $resp_counts[ $rid ][ $pn ]++;
+        }
+
+        foreach ($resp_sums as $rid => $by_page) {
+            foreach ($by_page as $pn => $total) {
+                $c = $resp_counts[ $rid ][ $pn ] ?? 0;
+                if ($c > 0) {
+                    $formatted_individual_results[ $pn ][ $rid ] = (float) $total / $c;
+                }
+            }
         }
     }
 

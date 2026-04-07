@@ -38,18 +38,20 @@ add_action('admin_enqueue_scripts', function() {
         return;
     }
 
+    wp_enqueue_style('dashicons');
+
     wp_enqueue_style(
         'survey-pilot-admin',
         SP_URL . 'assets/css/admin.css',
-        [],
-        '2.0'
+        ['dashicons'],
+        '2.24'
     );
 
     wp_enqueue_script(
         'survey-pilot-admin',
         SP_URL . 'assets/js/admin.js',
         [],
-        '2.0',
+        '2.24',
         true
     );
 
@@ -147,7 +149,7 @@ function sp_handle_export_survey_csv() {
     // Questions ordered as they appear in the survey.
     $questions = $wpdb->get_results(
         $wpdb->prepare(
-            "SELECT id, question_text, question_order
+            "SELECT id, question_text, question_order, scale_min, scale_max
              FROM {$wpdb->prefix}survey_questions
              WHERE survey_id = %d
              ORDER BY question_order ASC",
@@ -190,7 +192,15 @@ function sp_handle_export_survey_csv() {
     $rows   = [];
     $header = ['Response ID', 'User ID', 'Submitted At'];
     foreach ($questions as $q) {
-        $header[] = 'Q' . $q['question_order'] . ': ' . $q['question_text'];
+        $scale_min = isset($q['scale_min']) ? (int) $q['scale_min'] : 1;
+        $scale_max = isset($q['scale_max']) ? (int) $q['scale_max'] : 5;
+        if ($scale_min <= 0) {
+            $scale_min = 1;
+        }
+        if ($scale_max < $scale_min) {
+            $scale_max = $scale_min;
+        }
+        $header[] = 'Q' . $q['question_order'] . ' (' . $scale_min . '-' . $scale_max . '): ' . $q['question_text'];
     }
     $rows[] = $header;
 
@@ -225,29 +235,6 @@ function sp_handle_export_survey_csv() {
         'csv'      => $csv,
         'filename' => $filename,
     ]);
-}
-
-// Collect page header text boxes from POST and return a JSON string (or null if none submitted).
-// Keys are 1-based page numbers, values are the sanitized header strings (may be empty).
-function sp_build_page_headers_json() {
-    if (empty($_POST['sp_page_headers']) || !is_array($_POST['sp_page_headers'])) {
-        return null;
-    }
-
-    $raw = $_POST['sp_page_headers'];
-    $headers = [];
-    foreach ($raw as $page_num => $value) {
-        $page_num = absint($page_num);
-        if ($page_num < 1) continue;
-        $headers[$page_num] = sanitize_text_field(wp_unslash($value));
-    }
-
-    if (empty($headers)) {
-        return null;
-    }
-
-    ksort($headers);
-    return wp_json_encode($headers);
 }
 
 // Handle Create / Edit / Duplicate Survey Submission
@@ -286,8 +273,6 @@ function sp_handle_create_survey() {
         wp_die('A survey with that name already exists. Please choose a different title.', 'Duplicate Title', ['back_link' => true]);
     }
 
-    $page_headers_json = sp_build_page_headers_json();
-
     $send_email_message = !empty($_POST['sp_email_messaging']) ? 1 : 0;
     $email_message      = isset($_POST['sp_email_message']) ? sanitize_textarea_field(wp_unslash($_POST['sp_email_message'])) : null;
     $send_pdf_report    = ($send_email_message && !empty($_POST['sp_send_pdf_report'])) ? 1 : 0;
@@ -296,7 +281,16 @@ function sp_handle_create_survey() {
         wp_die('Message is required when "Send Email Message" is checked.', 'Validation Error', ['back_link' => true]);
     }
 
-    $survey_id = sp_add_survey_info_row($survey_title, $description, $instructions, $page_headers_json, $send_email_message, $email_message, $send_pdf_report);
+    $layout_result = sp_process_survey_layout_from_post(
+        isset($_POST['sp_survey_layout']) ? $_POST['sp_survey_layout'] : null,
+        $_POST['sp_questions'] ?? null,
+        $_POST['sp_page_headers'] ?? null
+    );
+    if (is_wp_error($layout_result)) {
+        wp_die(esc_html($layout_result->get_error_message()), 'Validation Error', ['back_link' => true]);
+    }
+
+    $survey_id = sp_add_survey_info_row($survey_title, $description, $instructions, $send_email_message, $email_message, $send_pdf_report, $layout_result);
 
     if (is_wp_error($survey_id)) {
         wp_die('Failed to create survey.');
@@ -342,8 +336,6 @@ function sp_handle_edit_survey() {
         wp_die('A survey with that name already exists. Please choose a different title.', 'Duplicate Title', ['back_link' => true]);
     }
 
-    $page_headers_json = sp_build_page_headers_json();
-
     $send_email_message = !empty($_POST['sp_email_messaging']) ? 1 : 0;
     $email_message      = isset($_POST['sp_email_message']) ? sanitize_textarea_field(wp_unslash($_POST['sp_email_message'])) : null;
     $send_pdf_report    = ($send_email_message && !empty($_POST['sp_send_pdf_report'])) ? 1 : 0;
@@ -352,7 +344,21 @@ function sp_handle_edit_survey() {
         wp_die('Message is required when "Send Email Message" is checked.', 'Validation Error', ['back_link' => true]);
     }
 
-    $update_result = sp_update_survey_info_row($survey_id, $survey_title, $description, $instructions, $page_headers_json, $send_email_message, $email_message, $send_pdf_report);
+    $locked_check = sp_validate_locked_survey_edit($survey_id);
+    if (is_wp_error($locked_check)) {
+        wp_die(esc_html($locked_check->get_error_message()), 'Validation Error', ['back_link' => true]);
+    }
+
+    $layout_result = sp_process_survey_layout_from_post(
+        isset($_POST['sp_survey_layout']) ? $_POST['sp_survey_layout'] : null,
+        $_POST['sp_questions'] ?? null,
+        $_POST['sp_page_headers'] ?? null
+    );
+    if (is_wp_error($layout_result)) {
+        wp_die(esc_html($layout_result->get_error_message()), 'Validation Error', ['back_link' => true]);
+    }
+
+    $update_result = sp_update_survey_info_row($survey_id, $survey_title, $description, $instructions, $send_email_message, $email_message, $send_pdf_report, $layout_result);
 
     if (is_wp_error($update_result)) {
         wp_die('Failed to update survey.');
@@ -413,10 +419,10 @@ function sp_handle_duplicate_survey() {
         $new_title,
         $original['survey_description'],
         $original['instructions'],
-        isset($original['page_headers']) ? $original['page_headers'] : null,
         isset($original['send_email_message']) ? (int) $original['send_email_message'] : 0,
         isset($original['email_message']) ? $original['email_message'] : null,
-        isset($original['send_pdf_report']) ? (int) $original['send_pdf_report'] : 0
+        isset($original['send_pdf_report']) ? (int) $original['send_pdf_report'] : 0,
+        isset($original['survey_layout']) ? $original['survey_layout'] : null
     );
 
     if (is_wp_error($new_survey_id) || !$new_survey_id) {
@@ -439,8 +445,7 @@ function sp_handle_duplicate_survey() {
                 $question['question_order'],
                 $question['scale_min'],
                 $question['scale_max'],
-                $question['scale_labels'],
-                isset($question['page_number']) ? (int) $question['page_number'] : 1
+                $question['scale_labels']
             );
         }
     }
@@ -454,7 +459,7 @@ function sp_save_survey_questions_from_post($survey_id) {
         return;
     }
 
-    $questions = $_POST['sp_questions'];
+    $questions = sp_normalize_questions_post_array($_POST['sp_questions']);
     $order = 1;
 
     foreach ($questions as $question) {
@@ -464,7 +469,6 @@ function sp_save_survey_questions_from_post($survey_id) {
         }
 
         $scale_rows = isset($question['scale']) && is_array($question['scale']) ? $question['scale'] : [];
-        $page_number = isset($question['page']) ? max(1, intval($question['page'])) : 1;
 
         $values = [];
         $labels = [];
@@ -503,8 +507,7 @@ function sp_save_survey_questions_from_post($survey_id) {
             $order,
             $scale_min,
             $scale_max,
-            $scale_labels,
-            $page_number
+            $scale_labels
         );
 
         $order++;
@@ -524,7 +527,7 @@ function sp_replace_survey_questions_from_post($survey_id) {
     }
 
     $questions_table = $wpdb->prefix . 'survey_questions';
-    $questions = $_POST['sp_questions'];
+    $questions = sp_normalize_questions_post_array($_POST['sp_questions']);
     $order = 1;
     $submitted_ids = [];
 
@@ -536,7 +539,6 @@ function sp_replace_survey_questions_from_post($survey_id) {
         }
 
         $existing_id  = isset($question['id']) ? absint($question['id']) : 0;
-        $page_number  = isset($question['page']) ? max(1, intval($question['page'])) : 1;
         $scale_rows   = isset($question['scale']) && is_array($question['scale']) ? $question['scale'] : [];
 
         $values = [];
@@ -583,10 +585,9 @@ function sp_replace_survey_questions_from_post($survey_id) {
                         'scale_max'      => $scale_max,
                         'scale_labels'   => $scale_labels,
                         'question_order' => $order,
-                        'page_number'    => $page_number,
                     ],
                     ['id' => $existing_id],
-                    ['%s', '%d', '%d', '%s', '%d', '%d'],
+                    ['%s', '%d', '%d', '%s', '%d'],
                     ['%d']
                 );
                 $submitted_ids[] = $existing_id;
@@ -602,8 +603,7 @@ function sp_replace_survey_questions_from_post($survey_id) {
             $order,
             $scale_min,
             $scale_max,
-            $scale_labels,
-            $page_number
+            $scale_labels
         );
 
         if ($new_id && !is_wp_error($new_id)) {

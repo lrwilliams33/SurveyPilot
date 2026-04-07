@@ -11,6 +11,8 @@ function sp_render_create_survey_page() {
     $is_edit = false;
     $questions = [];
 
+    $sp_survey_response_count = 0;
+
     if (isset($_GET['action'], $_GET['id']) && $_GET['action'] === 'edit') {
         $survey_id = intval($_GET['id']);
 
@@ -32,6 +34,13 @@ function sp_render_create_survey_page() {
                         $survey_id
                     ),
                     ARRAY_A
+                );
+
+                $sp_survey_response_count = (int) $wpdb->get_var(
+                    $wpdb->prepare(
+                        "SELECT COUNT(*) FROM {$wpdb->prefix}survey_response_info WHERE survey_id = %d",
+                        $survey_id
+                    )
                 );
             }
         }

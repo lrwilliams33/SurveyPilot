@@ -20,15 +20,21 @@ if (file_exists(__DIR__ . '/vendor/autoload.php')) {
 }
 
 require_once SP_PATH . 'includes/database.php';
+require_once SP_PATH . 'includes/survey-layout.php';
 register_activation_hook(__FILE__, 'add_tables');
 
 // Run DB migrations on admin load when schema version changes.
-add_action('admin_init', function() {
-    if (get_option('sp_db_version') !== '1.6') {
-        add_tables();
-        update_option('sp_db_version', '1.6');
+add_action('admin_init', function () {
+    if (get_option('sp_db_version') === '1.8') {
+        return;
     }
-});
+    if (function_exists('sp_run_survey_pilot_db_upgrade_to_18')) {
+        sp_run_survey_pilot_db_upgrade_to_18();
+    } else {
+        add_tables();
+    }
+    update_option('sp_db_version', '1.8');
+}, 5);
 
 require_once SP_PATH . 'includes/admin.php';
 require_once SP_PATH . 'includes/admin-pages.php';
