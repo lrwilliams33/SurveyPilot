@@ -126,6 +126,71 @@ function sp_handle_submit_survey() {
 
     ksort($clean_answers, SORT_NUMERIC);
 
+    // Server-side completeness check to prevent skipping questions (e.g., via URL sp_page tampering).
+    global $wpdb;
+    $questions_table = $wpdb->prefix . 'survey_questions';
+
+    $expected_ids = $wpdb->get_col(
+        $wpdb->prepare(
+            "SELECT id FROM $questions_table WHERE survey_id = %d ORDER BY question_order ASC, id ASC",
+            $survey_id
+        )
+    );
+
+    if (empty($expected_ids)) {
+        wp_die('Survey questions could not be loaded.');
+    }
+
+    // Ensure every expected question has an answer.
+    $expected_ids = array_map('intval', $expected_ids);
+    $answered_ids = array_map('intval', array_keys($clean_answers));
+    $missing_ids  = array_diff($expected_ids, $answered_ids);
+
+    if (!empty($missing_ids)) {
+        if (!function_exists('sp_get_question_id_to_page_map')) {
+            wp_die('Survey layout helper is missing.');
+        }
+
+        $id_to_page = sp_get_question_id_to_page_map($survey_id);
+
+        if (empty($id_to_page)) {
+            wp_die('Survey layout is not configured correctly.');
+        }
+
+        $first_unanswered_id   = null;
+        $first_unanswered_page = null;
+
+        foreach ($expected_ids as $qid) {
+            if (!in_array($qid, $missing_ids, true)) {
+                continue;
+            }
+
+            $page_num = isset($id_to_page[$qid]) ? (int) $id_to_page[$qid] : 1;
+
+            if ($first_unanswered_page === null || $page_num < $first_unanswered_page) {
+                $first_unanswered_page = $page_num;
+                $first_unanswered_id   = (int) $qid;
+            }
+        }
+
+        $redirect = wp_get_referer();
+
+        if (!$redirect) {
+            $redirect = home_url('/');
+        }
+
+        $redirect = add_query_arg([
+            'sp_survey_id'               => $survey_id,
+            'sp_step'                    => 'survey',
+            'sp_incomplete'              => 1,
+            'sp_first_unanswered'        => (int) $first_unanswered_id,
+            'sp_first_unanswered_page'   => (int) $first_unanswered_page,
+        ], $redirect);
+
+        wp_safe_redirect($redirect);
+        exit;
+    }
+
     if(!is_user_logged_in()) {
         wp_die('You must be logged in to submit the survey.');
     }

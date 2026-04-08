@@ -2,6 +2,33 @@
 if (!defined('ABSPATH')) exit;
 ?>
 <link rel="stylesheet" href="<?php echo esc_url(SP_URL . 'templates/user-templates/styles.css'); ?>">
+<style>
+    .sp-modal {
+        position: fixed;
+        top: 20%;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 9999;
+        background: transparent;
+    }
+    .sp-modal[hidden] {
+        display: none;
+    }
+    .sp-modal__content {
+        background: #fff;
+        padding: 20px;
+        max-width: 420px;
+        width: 90%;
+        border-radius: 4px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    }
+    .sp-modal__buttons {
+        margin-top: 16px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+</style>
 <?php
 
 global $wpdb;
@@ -207,6 +234,17 @@ foreach ($questions as $idx => $q_row) {
     </form>
 </div>
 
+<div class="sp-modal" id="sp-incomplete-modal" hidden aria-hidden="true" role="dialog" aria-labelledby="sp-incomplete-title">
+    <div class="sp-modal__content">
+        <h3 id="sp-incomplete-title">Incomplete survey</h3>
+        <p>Some questions are still unanswered. What would you like to do?</p>
+        <div class="sp-modal__buttons">
+            <button type="button" class="sp-button sp-button-secondary" id="sp-incomplete-close">Close</button>
+            <button type="button" class="sp-button" id="sp-incomplete-goto">Go to first unanswered question</button>
+        </div>
+    </div>
+</div>
+
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const form = document.querySelector('.sp-survey-form');
@@ -216,6 +254,7 @@ foreach ($questions as $idx => $q_row) {
         const nextBtn = document.querySelector('.sp-next-btn');
         const submitBtn = form.querySelector('button[type="submit"]');
         const surveyId = <?php echo (int) $sp_survey_id; ?>;
+        const CURRENT_PAGE = <?php echo (int) $current_page; ?>;
 
         const STORAGE_KEY = 'sp_survey_answers_' + surveyId;
         const EXPIRY_KEY = 'sp_survey_answers_expiry_' + surveyId;
@@ -306,6 +345,11 @@ foreach ($questions as $idx => $q_row) {
             saveAllAnswers(mergedAnswers);
         }
 
+        function getQueryParam(name) {
+            const params = new URLSearchParams(window.location.search);
+            return params.get(name);
+        }
+
         function allQuestionsOnPageAnswered() {
             const requiredFields = form.querySelectorAll('input[type="radio"][required]');
             const questionGroups = {};
@@ -390,5 +434,85 @@ foreach ($questions as $idx => $q_row) {
                 form.submit();
             });
         }
+
+        // Handle incomplete-survey popup after server-side validation redirect
+        (function handleIncompletePopup() {
+            const incompleteFlag = getQueryParam('sp_incomplete');
+            if (incompleteFlag !== '1') {
+                return;
+            }
+
+            const modal = document.getElementById('sp-incomplete-modal');
+            if (!modal) return;
+
+            const closeBtn = document.getElementById('sp-incomplete-close');
+            const gotoBtn  = document.getElementById('sp-incomplete-goto');
+            const firstUnansweredId = parseInt(getQueryParam('sp_first_unanswered') || '0', 10);
+            const firstUnansweredPage = parseInt(getQueryParam('sp_first_unanswered_page') || '0', 10);
+
+            function hideModal() {
+                modal.setAttribute('hidden', 'hidden');
+                modal.setAttribute('aria-hidden', 'true');
+            }
+
+            function showModal() {
+                modal.removeAttribute('hidden');
+                modal.setAttribute('aria-hidden', 'false');
+            }
+
+            if (closeBtn) {
+                closeBtn.addEventListener('click', function() {
+                    hideModal();
+                });
+            }
+
+            if (gotoBtn) {
+                gotoBtn.addEventListener('click', function() {
+                    hideModal();
+
+                    if (!firstUnansweredId) {
+                        return;
+                    }
+
+                    // Navigate to the correct page first if needed
+                    if (firstUnansweredPage && firstUnansweredPage !== CURRENT_PAGE) {
+                        const url = new URL(window.location.href);
+                        url.searchParams.set('sp_step', 'survey');
+                        url.searchParams.set('sp_survey_id', String(surveyId));
+                        url.searchParams.set('sp_page', String(firstUnansweredPage));
+                        url.searchParams.set('sp_incomplete', '0');
+                        url.searchParams.set('sp_jump_to', String(firstUnansweredId));
+                        window.location.href = url.toString();
+                        return;
+                    }
+
+                    const selector = 'input[type="radio"][name="sp_answers[' + firstUnansweredId + ']"]';
+                    const target = form.querySelector(selector);
+                    if (target) {
+                        const row = target.closest('tr') || target;
+                        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        target.focus({ preventScroll: true });
+                    }
+                });
+            }
+
+            showModal();
+        })();
+
+        // If we were explicitly asked to jump to a question (after user chose that option)
+        (function handleJumpTo() {
+            const jumpId = parseInt(getQueryParam('sp_jump_to') || '0', 10);
+            if (!jumpId) {
+                return;
+            }
+
+            const selector = 'input[type="radio"][name="sp_answers[' + jumpId + ']"]';
+            const target = form.querySelector(selector);
+            if (target) {
+                const row = target.closest('tr') || target;
+                row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                target.focus({ preventScroll: true });
+            }
+        })();
     });
 </script>

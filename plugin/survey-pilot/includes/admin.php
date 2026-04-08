@@ -633,6 +633,11 @@ add_action('admin_init', function() {
     if (!isset($_GET['action'], $_GET['id'])) return;
     $action = sanitize_text_field($_GET['action']);
     $survey_id = intval($_GET['id']);
+    
+    if (!current_user_can('manage_options')) {
+        wp_die('Insufficient permissions');
+    }
+
     global $wpdb;
 
     if ($action === 'delete') {
