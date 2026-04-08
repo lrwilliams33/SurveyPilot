@@ -261,9 +261,10 @@ function sp_handle_create_survey() {
     }
 
     // Create the survey
-    $survey_title = sanitize_text_field(wp_unslash($_POST['sp_survey_title']));
-    $description = isset($_POST['sp_survey_description']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_description'])) : null;
-    $instructions = isset($_POST['sp_survey_instructions']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_instructions'])) : null;
+    // Store raw text (no HTML execution) and rely on escaping on output.
+    $survey_title = isset($_POST['sp_survey_title']) ? trim((string) wp_unslash($_POST['sp_survey_title'])) : '';
+    $description  = isset($_POST['sp_survey_description']) ? trim((string) wp_unslash($_POST['sp_survey_description'])) : null;
+    $instructions = isset($_POST['sp_survey_instructions']) ? trim((string) wp_unslash($_POST['sp_survey_instructions'])) : null;
 
     global $wpdb;
     $duplicate = $wpdb->get_var(
@@ -274,7 +275,7 @@ function sp_handle_create_survey() {
     }
 
     $send_email_message = !empty($_POST['sp_email_messaging']) ? 1 : 0;
-    $email_message      = isset($_POST['sp_email_message']) ? sanitize_textarea_field(wp_unslash($_POST['sp_email_message'])) : null;
+    $email_message      = isset($_POST['sp_email_message']) ? trim((string) wp_unslash($_POST['sp_email_message'])) : null;
     $send_pdf_report    = ($send_email_message && !empty($_POST['sp_send_pdf_report'])) ? 1 : 0;
 
     if ($send_email_message && empty(trim($email_message ?? ''))) {
@@ -320,9 +321,9 @@ function sp_handle_edit_survey() {
     }
 
     $survey_id = intval($_POST['sp_survey_id']);
-    $survey_title = sanitize_text_field(wp_unslash($_POST['sp_survey_title']));
-    $description = isset($_POST['sp_survey_description']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_description'])) : null;
-    $instructions = isset($_POST['sp_survey_instructions']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_instructions'])) : null;
+    $survey_title = isset($_POST['sp_survey_title']) ? trim((string) wp_unslash($_POST['sp_survey_title'])) : '';
+    $description  = isset($_POST['sp_survey_description']) ? trim((string) wp_unslash($_POST['sp_survey_description'])) : null;
+    $instructions = isset($_POST['sp_survey_instructions']) ? trim((string) wp_unslash($_POST['sp_survey_instructions'])) : null;
 
     global $wpdb;
     $duplicate = $wpdb->get_var(
@@ -337,7 +338,7 @@ function sp_handle_edit_survey() {
     }
 
     $send_email_message = !empty($_POST['sp_email_messaging']) ? 1 : 0;
-    $email_message      = isset($_POST['sp_email_message']) ? sanitize_textarea_field(wp_unslash($_POST['sp_email_message'])) : null;
+    $email_message      = isset($_POST['sp_email_message']) ? trim((string) wp_unslash($_POST['sp_email_message'])) : null;
     $send_pdf_report    = ($send_email_message && !empty($_POST['sp_send_pdf_report'])) ? 1 : 0;
 
     if ($send_email_message && empty(trim($email_message ?? ''))) {
@@ -580,7 +581,8 @@ function sp_replace_survey_questions_from_post($survey_id) {
                 $wpdb->update(
                     $questions_table,
                     [
-                        'question_text'  => sanitize_textarea_field($question_text),
+                        // Store raw text; escape when rendering in admin/frontend.
+                        'question_text'  => $question_text,
                         'scale_min'      => $scale_min,
                         'scale_max'      => $scale_max,
                         'scale_labels'   => $scale_labels,

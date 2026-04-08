@@ -690,23 +690,26 @@ function sp_process_survey_layout_from_post($raw_json, $questions_post, $page_he
             if ($content === '') {
                 return new WP_Error('sp_empty_text', 'Text block content cannot be empty.');
             }
+            // Store raw text; escape later when rendering.
             $sanitized[] = [
                 'type'    => 'text',
-                'content' => sanitize_textarea_field($content),
+                'content' => $content,
             ];
         } elseif ($type === 'page_header') {
             if ((int) ($block['page'] ?? 0) !== 1) {
                 return new WP_Error('sp_bad_page_header', 'Invalid page header block.');
             }
+            $header = isset($block['header']) ? trim((string) wp_unslash($block['header'])) : '';
             $sanitized[] = [
                 'type'   => 'page_header',
                 'page'   => 1,
-                'header' => sanitize_text_field($block['header'] ?? ''),
+                'header' => $header,
             ];
         } elseif ($type === 'page_break') {
+            $header = isset($block['header']) ? trim((string) wp_unslash($block['header'])) : '';
             $sanitized[] = [
                 'type'   => 'page_break',
-                'header' => sanitize_text_field($block['header'] ?? ''),
+                'header' => $header,
             ];
         } else {
             $sanitized[] = ['type' => 'question'];

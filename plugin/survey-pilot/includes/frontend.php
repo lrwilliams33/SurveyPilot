@@ -17,7 +17,10 @@ function sp_render_survey($atts) {
     $sp_survey_id = 0;
 
     if (!empty($atts['name'])) {
-        $survey_title = sanitize_text_field(wp_unslash($atts['name']));
+        // Store titles as raw text; do a trimmed lookup here and
+        // rely on prepared statements and escaped output elsewhere
+        // to prevent XSS while allowing characters like < and >.
+        $survey_title = trim((string) wp_unslash($atts['name']));
         $row = $wpdb->get_row(
             $wpdb->prepare(
                 "SELECT id FROM {$wpdb->prefix}survey_info WHERE title = %s LIMIT 1",

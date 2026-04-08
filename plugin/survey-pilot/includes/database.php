@@ -142,12 +142,14 @@ Following functions are for adding rows to the tables
 function sp_add_survey_info_row($title, $description = null, $instructions = null, $send_email_message = 0, $email_message = null, $send_pdf_report = 0, $survey_layout = null) {
     global $wpdb;
 
-    //fetch the title, description, and instructions and format
-    $title = sanitize_text_field($title);
-    $description = sanitize_textarea_field($description);
-    $instructions = sanitize_textarea_field($instructions);
+    // Store raw text; rely on escaping on output to prevent XSS.
+    $title        = is_string($title) ? trim($title) : '';
+    $description  = is_string($description) ? trim($description) : null;
+    $instructions = is_string($instructions) ? trim($instructions) : null;
     $send_email_message = $send_email_message ? 1 : 0;
-    $email_message = ($email_message !== null && $email_message !== '') ? sanitize_textarea_field($email_message) : null;
+    $email_message = ($email_message !== null && $email_message !== '')
+        ? trim((string) $email_message)
+        : null;
     $send_pdf_report = $send_pdf_report ? 1 : 0;
     $survey_layout = ($survey_layout !== null && $survey_layout !== '') ? (string) $survey_layout : null;
 
@@ -204,11 +206,14 @@ function sp_add_survey_question_row(
 ) {
     global $wpdb;
 
-    $survey_id = intval($survey_id);
-    $question_text = sanitize_textarea_field($question_text);
-    $scale_min = intval($scale_min);
-    $scale_max = intval($scale_max);
-    $scale_labels = ($scale_labels !== null && $scale_labels !== '') ? sanitize_textarea_field($scale_labels) : null;
+    $survey_id      = intval($survey_id);
+    // Store raw text; escape on output.
+    $question_text  = is_string($question_text) ? trim($question_text) : '';
+    $scale_min      = intval($scale_min);
+    $scale_max      = intval($scale_max);
+    $scale_labels   = ($scale_labels !== null && $scale_labels !== '')
+        ? trim((string) $scale_labels)
+        : null;
     $question_order = intval($question_order);
 
     if ($survey_id <= 0) {
@@ -381,11 +386,14 @@ function sp_update_survey_info_row($survey_id, $title, $description = null, $ins
         return new WP_Error('invalid_survey_id', 'Invalid survey ID provided');
     }
 
-    $title = sanitize_text_field($title);
-    $description = sanitize_textarea_field($description);
-    $instructions = sanitize_textarea_field($instructions);
+    // Store raw text; rely on escaping on output to prevent XSS.
+    $title        = is_string($title) ? trim($title) : '';
+    $description  = is_string($description) ? trim($description) : null;
+    $instructions = is_string($instructions) ? trim($instructions) : null;
     $send_email_message = $send_email_message ? 1 : 0;
-    $email_message = ($email_message !== null && $email_message !== '') ? sanitize_textarea_field($email_message) : null;
+    $email_message = ($email_message !== null && $email_message !== '')
+        ? trim((string) $email_message)
+        : null;
     $send_pdf_report = $send_pdf_report ? 1 : 0;
     $survey_layout = ($survey_layout !== null && $survey_layout !== '') ? (string) $survey_layout : null;
 
