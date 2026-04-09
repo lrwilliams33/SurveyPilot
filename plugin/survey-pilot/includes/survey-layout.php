@@ -326,18 +326,18 @@ function sp_user_resolve_survey_pages_and_headers(array $questions_ordered, $lay
 }
 
 /**
- * Map question id => survey page (1-based) from survey_layout.
+ * Map question id => survey page (1-based) and survey page header from survey_layout.
  *
- * @return array<int, int>
+ * @return array<int, array{page: int, header: string}>
  */
 function sp_get_question_id_to_page_map($survey_id) {
     global $wpdb;
-
     $survey_id = (int) $survey_id;
     if ($survey_id <= 0) {
         return [];
     }
 
+    // Get layout JSON
     $layout_json = $wpdb->get_var(
         $wpdb->prepare(
             "SELECT survey_layout FROM {$wpdb->prefix}survey_info WHERE id = %d",
@@ -345,23 +345,54 @@ function sp_get_question_id_to_page_map($survey_id) {
         )
     );
 
+    $layout = json_decode($layout_json, true);
+
+    // Get ordered questions
     $questions = $wpdb->get_results(
         $wpdb->prepare(
-            "SELECT id FROM {$wpdb->prefix}survey_questions WHERE survey_id = %d ORDER BY question_order ASC, id ASC",
+            "SELECT id FROM {$wpdb->prefix}survey_questions 
+             WHERE survey_id = %d 
+             ORDER BY question_order ASC, id ASC",
             $survey_id
         ),
         ARRAY_A
     );
 
-    $blocks  = sp_user_normalized_survey_layout_blocks($questions, $layout_json);
-    $q_pages = sp_question_pages_list_from_layout($blocks);
-    $map     = [];
-    foreach ($questions as $i => $row) {
-        $map[ (int) $row['id'] ] = $q_pages[ $i ] ?? 1;
+    $map = [];
+
+    $current_page = 1;
+    $current_header = '';
+    $question_index = 0;
+
+    foreach ($layout as $block) {
+
+        if ($block['type'] === 'page_header') {
+            $current_page = isset($block['page']) ? (int)$block['page'] : $current_page;
+            $current_header = $block['header'] ?? '';
+        }
+
+        elseif ($block['type'] === 'page_break') {
+            $current_page++;
+            $current_header = $block['header'] ?? '';
+        }
+
+        elseif ($block['type'] === 'question') {
+            if (isset($questions[$question_index])) {
+                $qid = (int)$questions[$question_index]['id'];
+
+                $map[$qid] = [
+                    'page' => $current_page,
+                    'header' => $current_header
+                ];
+
+                $question_index++;
+            }
+        }
     }
 
     return $map;
 }
+
 
 /**
  * One-time migration: build survey_layout from legacy page_headers + question page_number.

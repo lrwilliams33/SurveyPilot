@@ -4,7 +4,7 @@ use Dompdf\Dompdf;
 use Dompdf\Options;
 
 //generate PDF Report and perform score aggregation and percentile calculations for the report
-function sp_generate_survey_pdf($survey_title, $response_id, $results, $population_means, $individual_results) {
+function sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_means, $individual_results) {
 
     if (!class_exists('Dompdf\Dompdf')) {
         return new WP_Error('sp_no_dompdf', 'Dompdf is not available.');
@@ -15,29 +15,45 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $populati
 
     $dompdf = new Dompdf($options);
 
+    $current_user = wp_get_current_user();
+    $name = $current_user->display_name ? $current_user->display_name : 'Anonymous';
+
     //group by category/page number
     $categories = [];
 
     foreach ($results as $row) {
         $page = $row->page_number;
         $value = (int) $row->answer_value;
+        $header = $row->page_header;
+        $question_max = 0;
+        
+        $labels = json_decode($row->scale_labels, true);
+        
+
+        if (is_array($labels)) {
+            $question_max = max(array_keys($labels));
+        }
 
         if (!isset($categories[$page])) {
             $categories[$page] = [
                 'questions' => [],
                 'total' => 0,
-                'count' => 0
+                'count' => 0,
+                'header' => $header,
+                'max' => 0
             ];
         }
 
         $categories[$page]['questions'][] = $row;
         $categories[$page]['total'] += $value;
         $categories[$page]['count']++;
+        $categories[$page]['max'] += $question_max ?? 0;
     }
 
     foreach ($categories as $page => $data) {
         $categories[$page]['composite'] =
             $data['count'] > 0 ? ($data['total'] / $data['count']) : 0;
+        $categories[$page]['max'] = $data['max'] > 0 ? ($data['max'] / $data['count']) : 0;
     }
 
     $category_stats = [];
@@ -47,15 +63,15 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $populati
         $page_results = $individual_results[$page] ?? [];
 
         $values = array_values($page_results);
-        $mean = $population_means[$page] ?? 0;
+        $mean = $sample_means[$page] ?? 0;
         $variance = 0;
         $count = count($values);
 
-        if ($count > 0){
+        if ($count > 1){
             foreach ($values as $val) {
                 $variance += pow($val - $mean, 2);
             }
-            $variance /= $count;
+            $variance /= ($count - 1);
             $stddev = sqrt($variance);
         }
         else{
@@ -65,24 +81,24 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $populati
         $below = 0;
 
         foreach ($page_results as $any_response_id => $user_composite) {
-            if ($any_response_id == $response_id) continue;
 
             if ($user_composite < $data['composite']) {
                 $below++;
-            } elseif (abs($user_composite - $data['composite']) < 0.0001) {
-                $below += 0.5;
             }
         }
 
-        $total = max(count($page_results) - 1, 0);
+        $total = max(count($page_results), 0);
 
+        // Percentile defined as (# values below x / total values) * 100
+        // Matches standard textbook definition
         $percentile = $total > 0
             ? ($below / $total) * 100
             : null;
 
         $category_stats[$page] = [
+            'header' => $data['header'],
             'composite' => $data['composite'],
-            'mean' => $population_means[$page] ?? 0,
+            'mean' => $sample_means[$page] ?? 0,
             'stddev' => $stddev,
             'percentile' => $percentile
         ];
@@ -208,6 +224,54 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $populati
             .qa-table tbody tr:nth-child(even) {
                 background-color: #fafafa;
             }
+
+            .overview-box {
+                border: 1px solid #e5e5e5;
+                padding: 12px;
+                margin-bottom: 10px;
+                border-radius: 4px;
+                background-color: #fafafa;
+            }
+
+            .overview-box:last-child {
+                margin-bottom: 15px;
+            }
+
+            .overview-title {
+                font-weight: bold;
+                margin-bottom: 4px;
+            }
+
+            .bar-container {
+                margin-bottom: 12px;
+            }
+
+            .bar-label {
+                font-size: 12px;
+                margin-bottom: 3px;
+            }
+
+            .bar-wrapper {
+                width: 100%;
+            }
+
+            .bar-track {
+                width: 100%;
+                background-color: #eee;
+                height: 14px;
+                border-radius: 4px;
+                margin-bottom: 6px;
+            }
+
+            .bar-user {
+                height: 100%;
+                background-color: #4CAF50;
+            }
+
+            .bar-mean {
+                height: 100%;
+                background-color: #888;
+            }
         </style>
     </head>
     <body>
@@ -217,25 +281,49 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $populati
     $html .= '<div class="header">';
     $html .= '<img class="logo" src="data:image/jpeg;base64,' . $logo_data . '" width="120">';
     $html .= '<h1 class="survey-title">' . esc_html($survey_title) . '</h1>';
-    $html .= '<p class="response-id">
-              Response ID: ' . intval($response_id) . '
-              </p>';
     $html .= '</div>';
+
+    $html .= '<h2>Overview</h2>';
+
+    $html .= '<p>
+    This report summarizes your performance on <strong>' . esc_html($survey_title) . '</strong>, taken by ' .  esc_html($name) . '.
+    </p>';
+
+    $html .= '<div class="overview-box">
+    <div class="overview-title">Composite Score</div>
+    <div>Your average score within each category.</div>
+    </div>';
+
+    $html .= '<div class="overview-box">
+    <div class="overview-title">Sample Mean</div>
+    <div>The average score across all respondents.</div>
+    </div>';
+
+    $html .= '<div class="overview-box">
+    <div class="overview-title">Sample Standard Deviation</div>
+    <div>Indicates how spread out responses are.</div>
+    </div>';
+
+    $html .= '<div class="overview-box">
+    <div class="overview-title">Percentile</div>
+    <div>Shows how your score compares to others.</div>
+    </div>';
+
 
     $html .= '<h2>Summary Statistics</h2>';
     $html .= '<table class="stats-table">';
     $html .= '<thead><tr>
                 <th>Category</th>
                 <th>Composite Score</th>
-                <th>Population Mean</th>
-                <th>Standard Deviation</th>
+                <th>Sample Mean</th>
+                <th>Sample Standard Deviation</th>
                 <th>Percentile</th>
               </tr></thead><tbody>';
 
     foreach ($category_stats as $page => $stat) {
 
         $html .= '<tr>';
-        $html .= '<td>Category ' . intval($page) . '</td>';
+        $html .= '<td>' . esc_html($categories[$page]['header'] ?? '') . '</td>';
         $html .= '<td>' . number_format($stat['composite'], 2) . '</td>';
         $html .= '<td>' . number_format($stat['mean'], 2) . '</td>';
         $html .= '<td>' . ($stat['stddev'] !== null 
@@ -249,12 +337,68 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $populati
 
     $html .= '</tbody></table>';
 
+    $html .= '<h2>Category Performance</h2>';
+    foreach ($category_stats as $page => $stat) {
+        $user = $stat['composite'];
+        $mean = $stat['mean'];
+
+
+        $max = $categories[$page]['max'] ?? 5;
+
+        $user_width = ($user / $max) * 100;
+        $mean_width = ($mean / $max) * 100;
+
+        $html .= '<div class="bar-container">';
+
+        $html .= '<div class="bar-label">'
+            . esc_html($stat['header'])
+            . ' (You: ' . number_format($user, 2)
+            . ' | Avg: ' . number_format($mean, 2)
+            .' | Max Possible Score: ' .number_format($max, 2) . ')'
+            . '</div>';
+
+        $html .= '<div class="bar-wrapper">';
+
+        //user bar
+        $html .= '<div style="font-size:10px; margin-bottom:2px;">You</div>';
+        $html .= '<div class="bar-track">';
+        $html .= '<div class="bar-user" style="
+            width:' . $user_width . '%;
+            color:white;
+            font-size:10px;
+            text-align:right;
+            padding-right:4px;
+        ">';
+        $html .= number_format($user, 1);
+        $html .= '</div>';
+        $html .= '</div>';
+
+        $html .= '<div style="height:10px;"></div>';
+
+        //average bar
+        $html .= '<div style="font-size:10px; margin-bottom:2px;">Average</div>';
+        $html .= '<div class="bar-track">';
+         $html .= '<div class="bar-mean" style="
+            width:' . $mean_width . '%;
+            color:white;
+            font-size:10px;
+            text-align:right;
+            padding-right:4px;
+        ">';
+        $html .= number_format($mean, 1);
+        $html .= '</div>';
+
+
+        $html .= '</div>';
+        $html .= '</div>';
+    }
+
     //iterate through categories and display question/answer pairs 
     $html .= '<h2>Detailed Responses</h2>';
 
     foreach ($categories as $page => $data) {
 
-        $html .= '<h3>Category ' . intval($page) . '</h3>';
+        $html .= '<h3>' . esc_html($data['header'] ?? '') . '</h3>';
         $html .= '<table class="qa-table">';
         $html .= '<thead><tr>
                     <th>Question</th>

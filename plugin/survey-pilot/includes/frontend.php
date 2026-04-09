@@ -288,10 +288,11 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
 
     foreach ($results as $row) {
         $qid = (int) $row->question_id;
-        $row->page_number = $id_to_page[ $qid ] ?? 1;
+        $row->page_number = $id_to_page[ $qid ]['page'] ?? 1;
+        $row->page_header = $id_to_page[ $qid ]['header'] ?? '';
     }
 
-    $population_means               = [];
+    $sample_means               = [];
     $formatted_individual_results   = [];
 
     if ($survey_id > 0) {
@@ -299,7 +300,7 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
         $answers_table = $wpdb->prefix . 'survey_response_answers';
         $questions_table = $wpdb->prefix . 'survey_questions';
 
-        $population_raw = $wpdb->get_results(
+        $sample_raw = $wpdb->get_results(
             $wpdb->prepare(
                 "SELECT q.id AS question_id, a.answer_value
                  FROM $answers_table a
@@ -311,9 +312,9 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
 
         $sums   = [];
         $counts = [];
-        foreach ($population_raw as $row) {
+        foreach ($sample_raw as $row) {
             $qid = (int) $row->question_id;
-            $pn  = $id_to_page[ $qid ] ?? 1;
+            $pn  = $id_to_page[ $qid ]['page'] ?? 1;
             if (!isset($sums[ $pn ])) {
                 $sums[ $pn ]   = 0;
                 $counts[ $pn ] = 0;
@@ -322,7 +323,7 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
             $counts[ $pn ]++;
         }
         foreach ($sums as $pn => $total) {
-            $population_means[ $pn ] = $counts[ $pn ] > 0 ? (float) $total / $counts[ $pn ] : 0.0;
+            $sample_means[ $pn ] = $counts[ $pn ] > 0 ? (float) $total / $counts[ $pn ] : 0.0;
         }
 
         $individual_raw = $wpdb->get_results(
@@ -340,7 +341,7 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
         foreach ($individual_raw as $row) {
             $rid = (int) $row->response_id;
             $qid = (int) $row->question_id;
-            $pn  = $id_to_page[ $qid ] ?? 1;
+            $pn  = $id_to_page[ $qid ]['page'] ?? 1;
             if (!isset($resp_sums[ $rid ])) {
                 $resp_sums[ $rid ]   = [];
                 $resp_counts[ $rid ] = [];
@@ -375,7 +376,7 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
 
     if ($include_pdf) {
         $message .= '<p>Attached below is a PDF report summarizing your responses and how they compare to others.</p>';
-        $pdf_path = sp_generate_survey_pdf($survey_title, $response_id, $results, $population_means, $formatted_individual_results);
+        $pdf_path = sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_means, $formatted_individual_results);
         if (!is_wp_error($pdf_path)) {
             $attachments[] = $pdf_path;
         } else {
