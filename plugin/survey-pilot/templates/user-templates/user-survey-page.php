@@ -71,17 +71,25 @@ if (empty($all_page_numbers)) {
     return;
 }
 
-// Get current page from query parameter or POST, default to first page
-$current_page = 1;
+// Resolve current page from request, then clamp to server-allowed flow state.
+$flow = sp_get_survey_flow($sp_survey_id);
+$first_page = (int) reset($all_page_numbers);
+$allowed_page = isset($flow['allowed_page']) ? (int) $flow['allowed_page'] : $first_page;
+
+$current_page = $first_page;
+
 if (isset($_GET['sp_page'])) {
-    $current_page = (int) $_GET['sp_page'];
+    $current_page = absint($_GET['sp_page']);
 } elseif (isset($_POST['sp_current_page'])) {
-    $current_page = (int) $_POST['sp_current_page'];
+    $current_page = absint($_POST['sp_current_page']);
 }
 
-// Fallback to the first valid page if the requested page is not available
 if (!in_array($current_page, $all_page_numbers, true)) {
-    $current_page = reset($all_page_numbers);
+    $current_page = $first_page;
+}
+
+if ($current_page > $allowed_page && empty($flow['completed'])) {
+    $current_page = $allowed_page;
 }
 
 $total_pages = count($all_page_numbers);
@@ -107,8 +115,10 @@ foreach ($questions as $idx => $q_row) {
 
     <form method="post" action="<?php echo $confirmation_url; ?>" class="sp-survey-form">
         <input type="hidden" name="action" value="sp_submit_survey">
+        <input type="hidden" name="sp_return_url" value="<?php echo esc_url(get_permalink()); ?>">
         <input type="hidden" name="sp_survey_id" value="<?php echo (int) $sp_survey_id; ?>">
         <input type="hidden" name="sp_current_page" value="<?php echo (int) $current_page; ?>" class="sp-current-page-input">
+        <input type="hidden" name="sp_navigation_action" value="" class="sp-navigation-action">
         <input type="hidden" name="is_final_submission" value="0" class="sp-is-final-submission">
 
     <?php
@@ -220,15 +230,10 @@ foreach ($questions as $idx => $q_row) {
                 <button type="button" class="sp-button sp-button-secondary sp-prev-btn" data-href="<?php echo $prev_url; ?>">← Previous</button>
             <?php endif; ?>
 
-            <?php if ($current_page < $total_pages) : 
-                $next_url = esc_url(add_query_arg(
-                    ['sp_step' => 'survey', 'sp_survey_id' => (int) $sp_survey_id, 'sp_page' => $current_page + 1],
-                    get_permalink()
-                ));
-            ?>
-                <button type="button" class="sp-button sp-next-btn" data-href="<?php echo $next_url; ?>">Next →</button>
+            <?php if ($current_page < $total_pages) : ?>
+                <button type="submit" class="sp-button sp-next-btn">Next →</button>
             <?php else : ?>
-                <button type="submit" class="sp-button">Submit Survey</button>
+                <button type="submit" class="sp-button sp-submit-btn">Submit Survey</button>
             <?php endif; ?>
         </div>
     </form>
@@ -252,7 +257,12 @@ foreach ($questions as $idx => $q_row) {
 
         const prevBtn = document.querySelector('.sp-prev-btn');
         const nextBtn = document.querySelector('.sp-next-btn');
-        const submitBtn = form.querySelector('button[type="submit"]');
+        const submitBtn = form.querySelector('.sp-submit-btn');
+        const navigationActionInput = form.querySelector('.sp-navigation-action');
+        const finalSubmissionInput = form.querySelector('.sp-is-final-submission');
+        const nonceInput = form.querySelector('input[name="_wpnonce"]');
+        const submitNonce = nonceInput ? nonceInput.value : '';
+        const ajaxUrl = <?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>;
         const surveyId = <?php echo (int) $sp_survey_id; ?>;
         const CURRENT_PAGE = <?php echo (int) $current_page; ?>;
 
@@ -303,6 +313,32 @@ foreach ($questions as $idx => $q_row) {
             const answers = getSavedAnswers();
             answers[String(questionId)] = String(answerValue);
             saveAllAnswers(answers);
+        }
+
+        function saveSingleAnswerToServer(questionId, answerValue) {
+            if (!ajaxUrl || !questionId) {
+                return;
+            }
+
+            const body = new URLSearchParams();
+            body.append('action', 'sp_save_answer');
+            body.append('survey_id', String(surveyId));
+            body.append('question_id', String(questionId));
+            body.append('answer_value', String(answerValue));
+            if (submitNonce) {
+                body.append('nonce', submitNonce);
+            }
+
+            fetch(ajaxUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+                },
+                body: body.toString(),
+                credentials: 'same-origin'
+            }).catch(function() {
+                // Keep UX uninterrupted if background session-save fails.
+            });
         }
 
         function restoreAnswersToPage() {
@@ -381,6 +417,7 @@ foreach ($questions as $idx => $q_row) {
 
                 const questionId = match[1];
                 saveSingleAnswer(questionId, this.value);
+                saveSingleAnswerToServer(questionId, this.value);
             });
         });
 
@@ -402,7 +439,16 @@ foreach ($questions as $idx => $q_row) {
                 }
 
                 syncCurrentPageAnswersToStorage();
-                window.location.href = nextBtn.getAttribute('data-href');
+
+                if (navigationActionInput) {
+                    navigationActionInput.value = 'next';
+                }
+
+                if (finalSubmissionInput) {
+                    finalSubmissionInput.value = '0';
+                }
+
+                form.submit();
             });
         }
 
@@ -430,6 +476,14 @@ foreach ($questions as $idx => $q_row) {
                         hiddenInput.value = answerValue;
                         form.appendChild(hiddenInput);
                     });
+
+                if (navigationActionInput) {
+                    navigationActionInput.value = 'submit';
+                }
+
+                if (finalSubmissionInput) {
+                    finalSubmissionInput.value = '1';
+                }
 
                 form.submit();
             });
@@ -513,6 +567,18 @@ foreach ($questions as $idx => $q_row) {
                 row.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 target.focus({ preventScroll: true });
             }
+        })();
+
+        // Show submit failures as a popup and keep the user in survey flow.
+        (function handleSubmitErrorPopup() {
+            const submitErrorFlag = getQueryParam('sp_submit_error');
+            if (submitErrorFlag !== '1') {
+                return;
+            }
+
+            const msg = getQueryParam('sp_submit_error_msg');
+            const decoded = msg ? decodeURIComponent(msg) : 'Error submitting survey. Please try again.';
+            alert(decoded);
         })();
     });
 </script>

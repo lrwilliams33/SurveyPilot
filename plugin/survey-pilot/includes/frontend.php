@@ -7,11 +7,316 @@
  * For step navigation the resolved id is passed via sp_survey_id in the URL.
  */
 
+function sp_ensure_session_started() {
+    if (session_status() === PHP_SESSION_NONE) {
+        if (!headers_sent()) {
+            ini_set('session.use_cookies', '1');
+            ini_set('session.use_only_cookies', '1');
+            session_start();
+        } else {
+            error_log('SP: Session could not start because headers were already sent.');
+        }
+    }
+}
+add_action('plugins_loaded', 'sp_ensure_session_started', 1);
+add_action('init', 'sp_ensure_session_started', 1);
+
+function sp_get_flow_session_key($survey_id) {
+    return 'sp_survey_flow_' . absint($survey_id);
+}
+
+function sp_get_first_survey_page($survey_id) {
+    global $wpdb;
+
+    $questions = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT *
+             FROM {$wpdb->prefix}survey_questions
+             WHERE survey_id = %d
+             ORDER BY question_order ASC, id ASC",
+            $survey_id
+        ),
+        ARRAY_A
+    );
+
+    if (!$questions) {
+        return 1;
+    }
+
+    $survey_info = $wpdb->get_row(
+        $wpdb->prepare(
+            "SELECT survey_layout FROM {$wpdb->prefix}survey_info WHERE id = %d",
+            $survey_id
+        ),
+        ARRAY_A
+    );
+
+    $resolved = sp_user_resolve_survey_pages_and_headers(
+        $questions,
+        ($survey_info && !empty($survey_info['survey_layout'])) ? $survey_info['survey_layout'] : null
+    );
+
+    $all_page_numbers = $resolved['all_page_numbers'] ?? [];
+
+    if (empty($all_page_numbers)) {
+        return 1;
+    }
+
+    sort($all_page_numbers, SORT_NUMERIC);
+    return (int) reset($all_page_numbers);
+}
+
+function sp_get_last_survey_page($survey_id) {
+    global $wpdb;
+
+    $questions = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT *
+             FROM {$wpdb->prefix}survey_questions
+             WHERE survey_id = %d
+             ORDER BY question_order ASC, id ASC",
+            $survey_id
+        ),
+        ARRAY_A
+    );
+
+    if (!$questions) {
+        return 1;
+    }
+
+    $survey_info = $wpdb->get_row(
+        $wpdb->prepare(
+            "SELECT survey_layout FROM {$wpdb->prefix}survey_info WHERE id = %d",
+            $survey_id
+        ),
+        ARRAY_A
+    );
+
+    $resolved = sp_user_resolve_survey_pages_and_headers(
+        $questions,
+        ($survey_info && !empty($survey_info['survey_layout'])) ? $survey_info['survey_layout'] : null
+    );
+
+    $all_page_numbers = $resolved['all_page_numbers'] ?? [];
+
+    if (empty($all_page_numbers)) {
+        return 1;
+    }
+
+    sort($all_page_numbers, SORT_NUMERIC);
+    return (int) end($all_page_numbers);
+}
+
+function sp_get_survey_flow($survey_id) {
+    $survey_id = absint($survey_id);
+    $session_key = sp_get_flow_session_key($survey_id);
+
+    if (!isset($_SESSION[$session_key]) || !is_array($_SESSION[$session_key])) {
+        $_SESSION[$session_key] = [
+            'allowed_step' => 'start',
+            'allowed_page' => sp_get_first_survey_page($survey_id),
+            'completed'    => false,
+        ];
+    }
+
+    return $_SESSION[$session_key];
+}
+
+function sp_set_survey_flow($survey_id, array $flow) {
+    $survey_id = absint($survey_id);
+    $session_key = sp_get_flow_session_key($survey_id);
+    $_SESSION[$session_key] = $flow;
+}
+
+function sp_reset_survey_flow($survey_id) {
+    $survey_id = absint($survey_id);
+    $first_page = sp_get_first_survey_page($survey_id);
+
+    sp_set_survey_flow($survey_id, [
+        'allowed_step' => 'start',
+        'allowed_page' => $first_page,
+        'completed'    => false,
+    ]);
+}
+
+function sp_unlock_info_step($survey_id) {
+    $flow = sp_get_survey_flow($survey_id);
+    $flow['allowed_step'] = 'info';
+    sp_set_survey_flow($survey_id, $flow);
+}
+
+function sp_unlock_survey_step($survey_id) {
+    $flow = sp_get_survey_flow($survey_id);
+    $flow['allowed_step'] = 'survey';
+    if (empty($flow['allowed_page'])) {
+        $flow['allowed_page'] = sp_get_first_survey_page($survey_id);
+    }
+    sp_set_survey_flow($survey_id, $flow);
+}
+
+function sp_unlock_next_survey_page($survey_id, $current_page) {
+    $flow = sp_get_survey_flow($survey_id);
+    $last_page = sp_get_last_survey_page($survey_id);
+    $next_page = min($last_page, absint($current_page) + 1);
+
+    if ($next_page > (int) $flow['allowed_page']) {
+        $flow['allowed_page'] = $next_page;
+    }
+
+    $flow['allowed_step'] = 'survey';
+    sp_set_survey_flow($survey_id, $flow);
+}
+
+function sp_mark_survey_complete($survey_id) {
+    $flow = sp_get_survey_flow($survey_id);
+    $flow['allowed_step'] = 'confirmation';
+    $flow['allowed_page'] = sp_get_last_survey_page($survey_id);
+    $flow['completed'] = true;
+    sp_set_survey_flow($survey_id, $flow);
+}
+
+function sp_validate_requested_flow($survey_id, $requested_step, $requested_page = 0) {
+    $flow = sp_get_survey_flow($survey_id);
+    $requested_step = in_array($requested_step, ['start', 'info', 'survey', 'confirmation'], true)
+        ? $requested_step
+        : 'start';
+
+    $allowed_step = $flow['allowed_step'];
+    $allowed_page = (int) $flow['allowed_page'];
+    $completed    = !empty($flow['completed']);
+
+    // Once completed, only confirmation and explicit start (retake) are allowed.
+    if ($completed && in_array($requested_step, ['info', 'survey'], true)) {
+        return [
+            'allowed' => false,
+            'redirect_step' => 'confirmation',
+        ];
+    }
+
+    if ($requested_step === 'start') {
+        return ['allowed' => true];
+    }
+
+    if ($requested_step === 'info') {
+        if (in_array($allowed_step, ['info', 'survey', 'confirmation'], true) || $completed) {
+            return ['allowed' => true];
+        }
+
+        return [
+            'allowed' => false,
+            'redirect_step' => 'start',
+        ];
+    }
+
+    if ($requested_step === 'survey') {
+        if (!in_array($allowed_step, ['survey', 'confirmation'], true) && !$completed) {
+            return [
+                'allowed' => false,
+                'redirect_step' => 'start',
+            ];
+        }
+
+        $requested_page = absint($requested_page);
+        if ($requested_page <= 0) {
+            $requested_page = sp_get_first_survey_page($survey_id);
+        }
+
+        if ($requested_page > $allowed_page && !$completed) {
+            return [
+                'allowed' => false,
+                'redirect_step' => 'survey',
+                'redirect_page' => $allowed_page,
+            ];
+        }
+
+        return ['allowed' => true];
+    }
+
+    if ($requested_step === 'confirmation') {
+        if ($completed || $allowed_step === 'confirmation') {
+            return ['allowed' => true];
+        }
+
+        if ($allowed_step === 'survey') {
+            return [
+                'allowed' => false,
+                'redirect_step' => 'survey',
+                'redirect_page' => $allowed_page,
+            ];
+        }
+
+        if ($allowed_step === 'info') {
+            return [
+                'allowed' => false,
+                'redirect_step' => 'info',
+            ];
+        }
+
+        return [
+            'allowed' => false,
+            'redirect_step' => 'start',
+        ];
+    }
+
+    return [
+        'allowed' => false,
+        'redirect_step' => 'start',
+    ];
+}
+
+function sp_get_question_ids_for_page($survey_id, $page_number) {
+    global $wpdb;
+
+    $questions = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT *
+             FROM {$wpdb->prefix}survey_questions
+             WHERE survey_id = %d
+             ORDER BY question_order ASC, id ASC",
+            $survey_id
+        ),
+        ARRAY_A
+    );
+
+    if (!$questions) {
+        return [];
+    }
+
+    $survey_info = $wpdb->get_row(
+        $wpdb->prepare(
+            "SELECT survey_layout FROM {$wpdb->prefix}survey_info WHERE id = %d",
+            $survey_id
+        ),
+        ARRAY_A
+    );
+
+    $resolved = sp_user_resolve_survey_pages_and_headers(
+        $questions,
+        ($survey_info && !empty($survey_info['survey_layout'])) ? $survey_info['survey_layout'] : null
+    );
+
+    $pages = $resolved['pages'] ?? [];
+
+    if (empty($pages[$page_number])) {
+        return [];
+    }
+
+    $question_ids = [];
+    foreach ($pages[$page_number] as $q) {
+        if (!empty($q['id'])) {
+            $question_ids[] = (int) $q['id'];
+        }
+    }
+
+    return $question_ids;
+}
+
 function sp_render_survey($atts) {
     global $wpdb;
 
     $atts = shortcode_atts(['name' => '', 'id' => ''], $atts, 'survey_pilot');
     $step = isset($_GET['sp_step']) ? sanitize_text_field($_GET['sp_step']) : 'start';
+    $valid_steps = ['start', 'info', 'survey', 'confirmation'];
 
     // Resolve survey ID: name attribute → DB lookup; fallback to id attr or GET param.
     $sp_survey_id = 0;
@@ -47,6 +352,46 @@ function sp_render_survey($atts) {
         echo esc_html__('Please specify which survey to display. Use the shortcode with the survey name, for example: [survey_pilot name="My Survey"]', 'survey-pilot');
         echo '</p></div>';
         return ob_get_clean();
+    }
+
+    if (!in_array($step, $valid_steps, true)) {
+        $flow = sp_get_survey_flow($sp_survey_id);
+        $redirect_step = isset($flow['allowed_step']) && in_array($flow['allowed_step'], $valid_steps, true)
+            ? $flow['allowed_step']
+            : 'start';
+
+        $redirect_args = [
+            'sp_survey_id' => $sp_survey_id,
+            'sp_step'      => $redirect_step,
+        ];
+
+        if ($redirect_step === 'survey') {
+            $redirect_args['sp_page'] = (int) ($flow['allowed_page'] ?? sp_get_first_survey_page($sp_survey_id));
+        }
+
+        wp_safe_redirect(add_query_arg($redirect_args, get_permalink()));
+        exit;
+    }
+
+    if ($step === 'start' && isset($_GET['sp_survey_id'])) {
+        sp_reset_survey_flow($sp_survey_id);
+    }
+
+    $requested_page = isset($_GET['sp_page']) ? absint($_GET['sp_page']) : 0;
+    $validation = sp_validate_requested_flow($sp_survey_id, $step, $requested_page);
+
+    if (!$validation['allowed']) {
+        $redirect_args = [
+            'sp_survey_id' => $sp_survey_id,
+            'sp_step'      => $validation['redirect_step'],
+        ];
+
+        if (!empty($validation['redirect_page'])) {
+            $redirect_args['sp_page'] = (int) $validation['redirect_page'];
+        }
+
+        wp_safe_redirect(add_query_arg($redirect_args, get_permalink()));
+        exit;
     }
 
     switch ($step) {
@@ -100,6 +445,18 @@ function sp_handle_submit_survey() {
     //get the survey ID and answers from the form submission
     $survey_id = isset($_POST['sp_survey_id']) ? absint($_POST['sp_survey_id']) : 0;
     $answers = isset($_POST['sp_answers']) ? (array) $_POST['sp_answers'] : [];
+    $navigation_action = isset($_POST['sp_navigation_action'])
+        ? sanitize_text_field($_POST['sp_navigation_action'])
+        : '';
+    $current_page = isset($_POST['sp_current_page']) ? absint($_POST['sp_current_page']) : 0;
+    $is_final_submission = isset($_POST['is_final_submission']) ? absint($_POST['is_final_submission']) : 0;
+    $return_url = isset($_POST['sp_return_url']) ? esc_url_raw(wp_unslash($_POST['sp_return_url'])) : '';
+
+    if (empty($return_url)) {
+        $return_url = wp_get_referer();
+    }
+
+    $return_url = wp_validate_redirect($return_url, home_url('/'));
 
     if ($survey_id <= 0) {
         wp_die('Invalid survey ID');
@@ -129,6 +486,78 @@ function sp_handle_submit_survey() {
 
     ksort($clean_answers, SORT_NUMERIC);
 
+    if (!$is_final_submission && $navigation_action === 'next') {
+        $flow = sp_get_survey_flow($survey_id);
+        $allowed_page = (int) ($flow['allowed_page'] ?? 1);
+        $posted_answers = isset($_POST['sp_answers']) ? (array) $_POST['sp_answers'] : [];
+        $redirect_base = $return_url;
+
+        if ($current_page <= 0 || $current_page > $allowed_page) {
+            wp_safe_redirect(add_query_arg([
+                'sp_survey_id' => $survey_id,
+                'sp_step'      => 'survey',
+                'sp_page'      => $allowed_page,
+            ], $redirect_base));
+            exit;
+        }
+
+        $required_question_ids = sp_get_question_ids_for_page($survey_id, $current_page);
+        if (empty($required_question_ids)) {
+            wp_safe_redirect(add_query_arg([
+                'sp_survey_id' => $survey_id,
+                'sp_step'      => 'survey',
+                'sp_page'      => $current_page,
+                'sp_incomplete' => 1,
+            ], $redirect_base));
+            exit;
+        }
+
+        $missing_for_current_page = [];
+        foreach ($required_question_ids as $qid) {
+            $has_posted_answer = array_key_exists((string) $qid, $posted_answers) || array_key_exists($qid, $posted_answers);
+            $has_clean_answer  = isset($clean_answers[$qid]);
+
+            if (!$has_posted_answer && !$has_clean_answer) {
+                $missing_for_current_page[] = (int) $qid;
+            }
+        }
+
+        if (!empty($missing_for_current_page)) {
+            $first_unanswered_id = (int) reset($missing_for_current_page);
+
+            wp_safe_redirect(add_query_arg([
+                'sp_survey_id'             => $survey_id,
+                'sp_step'                  => 'survey',
+                'sp_page'                  => $current_page,
+                'sp_incomplete'            => 1,
+                'sp_first_unanswered'      => $first_unanswered_id,
+                'sp_first_unanswered_page' => $current_page,
+            ], $redirect_base));
+            exit;
+        }
+
+        $session_key = 'sp_survey_answers_' . $survey_id;
+        if (!isset($_SESSION[$session_key]) || !is_array($_SESSION[$session_key])) {
+            $_SESSION[$session_key] = [];
+        }
+
+        foreach ($clean_answers as $qid => $val) {
+            $_SESSION[$session_key][$qid] = $val;
+        }
+
+        sp_unlock_next_survey_page($survey_id, $current_page);
+
+        $next_page = $current_page + 1;
+        $redirect = add_query_arg([
+            'sp_survey_id' => $survey_id,
+            'sp_step'      => 'survey',
+            'sp_page'      => $next_page,
+        ], $redirect_base);
+
+        wp_safe_redirect($redirect);
+        exit;
+    }
+
     // Server-side completeness check to prevent skipping questions (e.g., via URL sp_page tampering).
     global $wpdb;
     $questions_table = $wpdb->prefix . 'survey_questions';
@@ -141,23 +570,47 @@ function sp_handle_submit_survey() {
     );
 
     if (empty($expected_ids)) {
-        wp_die('Survey questions could not be loaded.');
+        wp_safe_redirect(add_query_arg([
+            'sp_survey_id'        => $survey_id,
+            'sp_step'             => 'survey',
+            'sp_page'             => max(1, $current_page),
+            'sp_submit_error'     => 1,
+            'sp_submit_error_msg' => rawurlencode('Survey questions could not be loaded. Please try again.'),
+        ], $return_url));
+        exit;
     }
 
     // Ensure every expected question has an answer.
     $expected_ids = array_map('intval', $expected_ids);
+    $expected_id_lookup = array_fill_keys($expected_ids, true);
+    // Ignore stale or invalid question IDs that are not part of this survey.
+    $clean_answers = array_intersect_key($clean_answers, $expected_id_lookup);
     $answered_ids = array_map('intval', array_keys($clean_answers));
     $missing_ids  = array_diff($expected_ids, $answered_ids);
 
     if (!empty($missing_ids)) {
         if (!function_exists('sp_get_question_id_to_page_map')) {
-            wp_die('Survey layout helper is missing.');
+            wp_safe_redirect(add_query_arg([
+                'sp_survey_id'        => $survey_id,
+                'sp_step'             => 'survey',
+                'sp_page'             => max(1, $current_page),
+                'sp_submit_error'     => 1,
+                'sp_submit_error_msg' => rawurlencode('Survey layout helper is missing. Please contact support.'),
+            ], $return_url));
+            exit;
         }
 
         $id_to_page = sp_get_question_id_to_page_map($survey_id);
 
         if (empty($id_to_page)) {
-            wp_die('Survey layout is not configured correctly.');
+            wp_safe_redirect(add_query_arg([
+                'sp_survey_id'        => $survey_id,
+                'sp_step'             => 'survey',
+                'sp_page'             => max(1, $current_page),
+                'sp_submit_error'     => 1,
+                'sp_submit_error_msg' => rawurlencode('Survey layout is not configured correctly. Please contact support.'),
+            ], $return_url));
+            exit;
         }
 
         $first_unanswered_id   = null;
@@ -168,7 +621,10 @@ function sp_handle_submit_survey() {
                 continue;
             }
 
-            $page_num = isset($id_to_page[$qid]) ? (int) $id_to_page[$qid] : 1;
+            $page_num = 1;
+            if (isset($id_to_page[$qid]) && is_array($id_to_page[$qid]) && isset($id_to_page[$qid]['page'])) {
+                $page_num = (int) $id_to_page[$qid]['page'];
+            }
 
             if ($first_unanswered_page === null || $page_num < $first_unanswered_page) {
                 $first_unanswered_page = $page_num;
@@ -176,15 +632,16 @@ function sp_handle_submit_survey() {
             }
         }
 
-        $redirect = wp_get_referer();
-
-        if (!$redirect) {
-            $redirect = home_url('/');
+        if ($first_unanswered_page === null) {
+            $first_unanswered_page = max(1, $current_page);
         }
+
+        $redirect = $return_url;
 
         $redirect = add_query_arg([
             'sp_survey_id'               => $survey_id,
             'sp_step'                    => 'survey',
+            'sp_page'                    => max(1, $current_page),
             'sp_incomplete'              => 1,
             'sp_first_unanswered'        => (int) $first_unanswered_id,
             'sp_first_unanswered_page'   => (int) $first_unanswered_page,
@@ -195,7 +652,14 @@ function sp_handle_submit_survey() {
     }
 
     if(!is_user_logged_in()) {
-        wp_die('You must be logged in to submit the survey.');
+        wp_safe_redirect(add_query_arg([
+            'sp_survey_id'        => $survey_id,
+            'sp_step'             => 'survey',
+            'sp_page'             => max(1, $current_page),
+            'sp_submit_error'     => 1,
+            'sp_submit_error_msg' => rawurlencode('You must be logged in to submit the survey.'),
+        ], $return_url));
+        exit;
     }
 
     $user_id = get_current_user_id();
@@ -204,18 +668,23 @@ function sp_handle_submit_survey() {
 
     if (is_wp_error($response_id)) {
         error_log('SP: Error saving survey submission: ' . $response_id->get_error_message());
-        wp_die('Error submitting survey: ' . $response_id->get_error_message());
+        wp_safe_redirect(add_query_arg([
+            'sp_survey_id'        => $survey_id,
+            'sp_step'             => 'survey',
+            'sp_page'             => max(1, $current_page),
+            'sp_submit_error'     => 1,
+            'sp_submit_error_msg' => rawurlencode('Error submitting survey. Please try again.'),
+        ], $return_url));
+        exit;
     }
 
     //send the survey response email to the user
     sp_send_survey_email($response_id, $survey_id, $user_id);
 
-    //after saving the survey response and sending the email, redirect the user to the confirmation page
-    $redirect = wp_get_referer();
+    sp_mark_survey_complete($survey_id);
 
-    if (!$redirect) {
-        $redirect = home_url('/');
-    }
+    //after saving the survey response and sending the email, redirect the user to the confirmation page
+    $redirect = $return_url;
 
     // Clear session data for this survey
     $session_key = 'sp_survey_answers_' . $survey_id;

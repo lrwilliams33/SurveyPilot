@@ -33,6 +33,11 @@ $title        = $survey['title'] ?? 'Survey';
 $description  = $survey['survey_description'] ?? '';
 $instructions = $survey['instructions'] ?? '';
 $icon_url     = esc_url(SP_URL . 'assets/images/info-circle.svg');
+$is_logged_in  = is_user_logged_in();
+
+if ($is_logged_in) {
+    sp_unlock_info_step($sp_survey_id);
+}
 ?>
 
 <div class="sp-container">
@@ -59,11 +64,14 @@ $icon_url     = esc_url(SP_URL . 'assets/images/info-circle.svg');
         </div>
     <?php endif; ?>
 
-    <?php
-    $info_url = esc_url(add_query_arg(
-        ['sp_step' => 'info', 'sp_survey_id' => (int) $sp_survey_id],
-        get_permalink()
-    ));
+    <?php if ($is_logged_in) :
+        $info_url = esc_url(add_query_arg(
+            ['sp_step' => 'info', 'sp_survey_id' => (int) $sp_survey_id],
+            get_permalink()
+        ));
     ?>
-    <a href="<?php echo $info_url; ?>" class="sp-button">Begin Survey</a>
+        <a href="<?php echo $info_url; ?>" class="sp-button">Begin Survey</a>
+    <?php else : ?>
+        <div class="sp-notice">You must be logged in to begin this survey.</div>
+    <?php endif; ?>
 </div>
