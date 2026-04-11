@@ -3,8 +3,93 @@
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
+/**
+ * Scale a JPEG/PNG on disk to fit inside a bounding box (aspect ratio preserved, no upscaling).
+ * Returns base64 body and mime for embedding in the PDF, or null on failure.
+ *
+ * @return array{data: string, mime: string, width: int, height: int}|null
+ */
+function sp_pdf_logo_to_bounded_base64($file_path, $max_width = 120, $max_height = 80) {
+    $max_width  = max(1, (int) $max_width);
+    $max_height = max(1, (int) $max_height);
+
+    $detected = wp_get_image_mime($file_path);
+    if ($detected !== 'image/jpeg' && $detected !== 'image/png') {
+        return null;
+    }
+
+    $dims = @getimagesize($file_path);
+    if ($dims === false || empty($dims[0]) || empty($dims[1])) {
+        return null;
+    }
+
+    $orig_w = (int) $dims[0];
+    $orig_h = (int) $dims[1];
+
+    if ($orig_w <= $max_width && $orig_h <= $max_height) {
+        $raw = file_get_contents($file_path);
+        if ($raw === false) {
+            return null;
+        }
+
+        return [
+            'data'   => base64_encode($raw),
+            'mime'   => $detected,
+            'width'  => $orig_w,
+            'height' => $orig_h,
+        ];
+    }
+
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+
+    $editor = wp_get_image_editor($file_path);
+    if (is_wp_error($editor)) {
+        return null;
+    }
+
+    $resized = $editor->resize($max_width, $max_height, false);
+    if (is_wp_error($resized)) {
+        return null;
+    }
+
+    $temp = wp_tempnam('sp-pdf-logo-');
+    if (!$temp) {
+        return null;
+    }
+
+    $saved = $editor->save($temp, $detected);
+
+    if (is_wp_error($saved) || empty($saved['path']) || !is_readable($saved['path'])) {
+        if (is_string($temp) && is_file($temp)) {
+            @unlink($temp);
+        }
+
+        return null;
+    }
+
+    $raw = file_get_contents($saved['path']);
+    if (is_file($saved['path'])) {
+        @unlink($saved['path']);
+    }
+
+    if ($raw === false || $raw === '') {
+        return null;
+    }
+
+    $out_w = isset($saved['width']) ? (int) $saved['width'] : $max_width;
+    $out_h = isset($saved['height']) ? (int) $saved['height'] : $max_height;
+
+    return [
+        'data'   => base64_encode($raw),
+        'mime'   => $detected,
+        'width'  => $out_w,
+        'height' => $out_h,
+    ];
+}
+
 //generate PDF Report and perform score aggregation and percentile calculations for the report
-function sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_means, $individual_results) {
+function sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_means, $individual_results, $pdf_logo_attachment_id = null) {
 
     if (!class_exists('Dompdf\Dompdf')) {
         return new WP_Error('sp_no_dompdf', 'Dompdf is not available.');
@@ -104,9 +189,30 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_m
         ];
     }
 
-    //load IBSTPI image into pdf
-    $logo_path = SP_PATH . 'assets/images/ibstpi_logo.jpg';
-    $logo_data = base64_encode(file_get_contents($logo_path));
+    $has_logo    = false;
+    $logo_data   = '';
+    $logo_mime   = '';
+    $logo_width  = 120;
+    $logo_height = 80;
+    $attachment_id = ($pdf_logo_attachment_id !== null && (int) $pdf_logo_attachment_id > 0)
+        ? (int) $pdf_logo_attachment_id
+        : 0;
+
+    if ($attachment_id > 0) {
+        $custom_path = get_attached_file($attachment_id);
+        if ($custom_path && is_readable($custom_path) && is_file($custom_path)) {
+            $bounded = sp_pdf_logo_to_bounded_base64($custom_path, 120, 80);
+            if ($bounded !== null) {
+                $has_logo    = true;
+                $logo_data   = $bounded['data'];
+                $logo_mime   = $bounded['mime'];
+                $logo_width  = $bounded['width'];
+                $logo_height = $bounded['height'];
+            }
+        }
+    }
+
+    $header_class = $has_logo ? 'header header--with-logo' : 'header';
 
     //create html for the pdf 
     $html = '
@@ -150,22 +256,35 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_m
                 position: absolute;
                 top: -10px;
                 right: 0;
+                max-width: 120px;
+                max-height: 80px;
+                width: auto;
+                height: auto;
+                object-fit: contain;
             }
 
             .survey-title {
                 text-align: center;
                 font-weight: bold;
-                padding-right: 140px;
+                padding-right: 0;
                 font-size: 24px;
                 color: #222;
+            }
+
+            .header--with-logo .survey-title {
+                padding-right: 140px;
             }
 
             .response-id {
                 text-align: center;
                 font-size: 12px;
                 margin-top: -5px;
-                padding-right: 140px;
+                padding-right: 0;
                 color: #777;
+            }
+
+            .header--with-logo .response-id {
+                padding-right: 140px;
             }
 
             table {
@@ -277,9 +396,13 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_m
     <body>
     ';
 
-    //PDF header
-    $html .= '<div class="header">';
-    $html .= '<img class="logo" src="data:image/jpeg;base64,' . $logo_data . '" width="120">';
+    // PDF header (logo only if a custom image is configured and readable)
+    $html .= '<div class="' . esc_attr($header_class) . '">';
+    if ($has_logo) {
+        $lw = (int) $logo_width;
+        $lh = (int) $logo_height;
+        $html .= '<img class="logo" src="data:' . $logo_mime . ';base64,' . $logo_data . '" width="' . $lw . '" height="' . $lh . '">';
+    }
     $html .= '<h1 class="survey-title">' . esc_html($survey_title) . '</h1>';
     $html .= '</div>';
 
@@ -445,7 +568,7 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_m
         wp_mkdir_p($pdf_dir);
     }
 
-    $file_path = trailingslashit($pdf_dir) . 'survey-report-' . intval($response_id) . '.pdf';
+    $file_path = trailingslashit($pdf_dir) . 'Survey-Results-Report.pdf';
 
     $written = file_put_contents($file_path, $dompdf->output());
 

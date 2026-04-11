@@ -3,6 +3,12 @@
     font-size: 16px;
 }
 
+.sp-dashboard {
+    overflow-x: hidden;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
 .sp-dashboard h1,
 .sp-admin-page h1 {
     font-size: 32px;
@@ -137,6 +143,7 @@
 
 .sp-survey-list {
     margin-top: 0;
+    min-width: 0;
 }
 
 .sp-btn-large {
@@ -160,6 +167,15 @@
     border-radius: 6px;
     cursor: pointer;
     transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    min-width: 0;
+    max-width: 100%;
+    /* Don’t use overflow: hidden — it clips the options dropdown past the card edge. */
+    box-sizing: border-box;
+}
+
+/* Open menu stacks above the next card so it isn’t covered when it extends downward. */
+.sp-survey-card:has(.sp-survey-menu.is-open) {
+    z-index: 40;
 }
 
 .sp-survey-card:hover {
@@ -194,11 +210,12 @@
     font-size: 26px;
     font-weight: 700;
     display: block;
-    width: fit-content;
+    width: 100%;
+    max-width: min(100%, 96%);
+    min-width: 0;
     color: #1d2327;
     line-height: 1;
     padding-bottom: 4px;
-    max-width: 90%;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -207,12 +224,12 @@
 .sp-survey-response-count {
     display: block;
     width: fit-content;
+    max-width: 100%;
     font-size: 14px;
     font-weight: 500;
     color: #646970;
     line-height: 1.35;
     margin-top: 2px;
-    max-width: 90%;
     white-space: normal;
     cursor: text;
 }
@@ -236,22 +253,26 @@
 
 .sp-survey-desc {
     display: block;
-    width: fit-content;
+    width: 100%;
+    max-width: min(100%, 95%);
+    min-width: 0;
     color: #5f6368;
     font-size: 18px;
     line-height: 1.35;
-    max-width: 90%;
+    margin-top: 2px;
+    cursor: text;
+    box-sizing: border-box;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    margin-top: 2px;
-    cursor: text;
 }
 
 .sp-survey-shortcode-box {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    max-width: 100%;
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: min(100%, 78%);
     padding: 6px 8px;
     margin-right: 14px;
     background: #f0f0f1;
@@ -262,12 +283,14 @@
     cursor: default;
 }
 
-/* Inner row; center so copy stays a fixed size (stretch + aspect-ratio grew huge on multi-line shortcodes). */
+/* Inner row; code truncates with ellipsis; copy stays fixed width. */
 .sp-survey-shortcode-inline {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: 6px;
     min-width: 0;
+    flex: 1;
+    width: 100%;
     box-sizing: border-box;
 }
 
@@ -282,6 +305,7 @@
     line-height: 1.35;
     width: 100%;
     max-width: 100%;
+    min-width: 0;
     box-sizing: border-box;
     /* Full-width row: only the gray shortcode well uses default cursor, not empty space to the right. */
     cursor: inherit;
@@ -305,7 +329,11 @@
     font-family: Consolas, Monaco, monospace;
     user-select: text;
     line-height: 1.35;
-    overflow-wrap: anywhere;
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* Fixed size; shorter than width with vertical margin so it sits visually centered vs code. */
@@ -540,7 +568,7 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
     min-width: 160px;
     padding: 4px 0;
-    z-index: 10;
+    z-index: 50;
     display: none;
 }
 
@@ -648,11 +676,16 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
 .sp-dashboard-content {
     display: flex;
     gap: 30px; /* space between left and right */
+    min-width: 0;
+    max-width: 100%;
 }
 
 /* Left column takes most space */
 .sp-dashboard-left {
     flex: 3;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
 }
 
 .sp-dashboard .sp-dashboard-left h2 {
@@ -768,6 +801,10 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     list-style: disc;
     margin-left: 24px;
     margin-bottom: 0;
+}
+
+.sp-dashboard-right .sp-editability-list {
+    margin-bottom: 12px;
 }
 
 .sp-dashboard-right li {
@@ -1336,10 +1373,85 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     overflow-y: auto;
 }
 
-#sp_email_messaging, #sp_send_pdf_report {
+#sp_email_messaging,
+#sp_send_pdf_report {
     transform: scale(1.4);
     transform-origin: center;
     cursor: pointer;
+}
+
+/* PDF logo: only the visible “Choose file” button opens the picker; filename text is not clickable. */
+.sp-pdf-logo-file-row {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.sp-pdf-logo-row input[type="file"].sp-pdf-logo-file-input-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Same size as .sp-admin-page .description (“Optional…”) */
+.sp-pdf-logo-filename {
+    font-size: 15px;
+    color: #646970;
+    user-select: none;
+    cursor: default;
+    pointer-events: none;
+}
+
+/*
+ * PDF logo actions + Likert “Add Option”: same gray secondary background as WP .button-secondary,
+ * same font metrics (15px) as Optional hint / filename.
+ */
+.sp-admin-page .sp-btn-filelike {
+    box-sizing: border-box;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 400;
+    line-height: 1.4;
+    min-height: 34px;
+    padding: 6px 12px;
+    margin: 0;
+    cursor: pointer;
+    border-radius: 3px;
+    border: 1px solid #2271b1;
+    background: #f6f7f7;
+    color: #2271b1;
+}
+
+.sp-admin-page .button.sp-btn-filelike {
+    font-size: 15px !important;
+    line-height: 1.4 !important;
+    min-height: 34px !important;
+    padding: 6px 12px !important;
+    height: auto !important;
+}
+
+.sp-admin-page .sp-btn-filelike:hover:not(:disabled),
+.sp-admin-page .sp-btn-filelike:focus-visible:not(:disabled) {
+    background: #f0f0f1 !important;
+    border-color: #0a4b78 !important;
+    color: #0a4b78 !important;
+}
+
+.sp-pdf-logo-row .sp-pdf-logo-remove-btn {
+    display: inline-block;
+    margin-top: 18px;
+    vertical-align: middle;
 }
 
 .sp-email-options-row {
@@ -1347,15 +1459,67 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     align-items: center;
     gap: 109px;
     margin-top: 12px;
-    margin-bottom: 14px;
-    margin-left: 33px;
-    padding: 0 2px;
+    margin-bottom: 18px;
+    margin-left: 34px;
+}
+
+/* Extra space before “PDF report logo” (email → message gap stays on first row only) */
+.sp-email-options-row--pdf {
+    margin-top: 0;
+    margin-bottom: 28px;
 }
 
 .sp-email-option-item {
     display: flex;
     align-items: center;
     gap: 10px;
+}
+
+.sp-pdf-logo-label {
+    display: block;
+    margin-bottom: 4px;
+    white-space: normal;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.sp-pdf-logo-row {
+    margin: 0 0 16px 34px;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+/* Same visual weight as other email rows (those use <label> and pick up .sp-admin-page label { font-size: 18px }). */
+.sp-pdf-logo-row .sp-email-option-label.sp-pdf-logo-label {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1d2327;
+    text-align: left;
+    white-space: normal;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.sp-pdf-logo-row .sp-pdf-logo-hint {
+    text-align: left;
+}
+
+.sp-pdf-logo-row .sp-pdf-logo-hint {
+    margin-top: 4px;
+    margin-bottom: 8px;
+}
+
+.sp-pdf-logo-preview {
+    margin-top: 12px;
+}
+
+.sp-pdf-logo-preview-img {
+    display: block;
+    margin-top: 6px;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 4px;
+    background: #fff;
 }
 
 .sp-email-option-label {
@@ -1369,9 +1533,14 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
 
 #sp-email-message-row {
     margin-top: 0;
+    margin-bottom: 36px;
 }
 
 #sp-email-message-row th {
     vertical-align: top;
     text-align: center;
+}
+
+#sp-email-message-row th label[for="sp_email_message"] {
+    margin-left: -2px;
 }

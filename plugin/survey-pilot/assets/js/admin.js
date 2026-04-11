@@ -1,4 +1,29 @@
 (() => {
+  function initHardCharacterMax() {
+    document.querySelectorAll("[data-sp-maxlength]").forEach((el) => {
+      const max = parseInt(el.getAttribute("data-sp-maxlength") || "", 10);
+      if (!Number.isFinite(max) || max <= 0) return;
+      const tag = el.tagName.toLowerCase();
+      const type = (el.getAttribute("type") || "").toLowerCase();
+      const supportsMaxlength =
+        tag === "textarea" ||
+        ["text", "search", "password", "email", "url", "tel"].includes(type);
+      if (supportsMaxlength) {
+        el.setAttribute("maxlength", String(max));
+      }
+    });
+
+    document.addEventListener("input", (e) => {
+      const target = e.target;
+      if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return;
+      const max = parseInt(target.getAttribute("data-sp-maxlength") || "", 10);
+      if (!Number.isFinite(max) || max <= 0) return;
+      if (target.value.length > max) {
+        target.value = target.value.slice(0, max);
+      }
+    });
+  }
+
   // Export modal
   const exportModal      = document.getElementById("sp-export-modal");
   const exportBtns       = document.querySelectorAll("[data-sp-export-survey-id]");
@@ -416,6 +441,25 @@
       mergeLeadingPageBreaksIntoPage1();
     }
 
+    function followMovedBlock(block, beforeTop) {
+      if (!block || !block.isConnected) return;
+      requestAnimationFrame(() => {
+        const afterTop = block.getBoundingClientRect().top;
+        if (typeof beforeTop === "number") {
+          const delta = afterTop - beforeTop;
+          if (Math.abs(delta) > 1) {
+            window.scrollBy({ top: delta, behavior: "smooth" });
+            return;
+          }
+        }
+        block.scrollIntoView({
+          block: "nearest",
+          behavior: "smooth",
+          inline: "nearest",
+        });
+      });
+    }
+
     function attachReorderHandlers(block) {
       if (block.dataset.spReorderBound === "1") return;
       block.dataset.spReorderBound = "1";
@@ -481,9 +525,11 @@
         }
         return;
       }
+      const beforeTop = block.getBoundingClientRect().top;
       const prev = block.previousElementSibling;
       questionsList.insertBefore(block, prev);
       refreshQuestionNumbers();
+      followMovedBlock(block, beforeTop);
     }
 
     function moveBlockDown(block) {
@@ -494,10 +540,12 @@
       ) {
         return;
       }
+      const beforeTop = block.getBoundingClientRect().top;
       const next = block.nextElementSibling;
       if (!next) return;
       questionsList.insertBefore(next, block);
       refreshQuestionNumbers();
+      followMovedBlock(block, beforeTop);
     }
 
     function refreshQuestionNumbers() {
@@ -629,7 +677,8 @@
         const removeBtn = document.createElement("button");
         removeBtn.type = "button";
         removeBtn.className = "button-link sp-scale-row-remove";
-        removeBtn.setAttribute("aria-label", "Remove this option");
+        removeBtn.setAttribute("aria-label", "Delete Option");
+        removeBtn.setAttribute("title", "Delete Option");
         removeBtn.innerHTML = trashIconUrl
           ? `<img src="${trashIconUrl}" alt="" class="sp-trash-icon" width="20" height="20">`
           : `<span class="dashicons dashicons-trash"></span>`;
@@ -671,7 +720,7 @@
       row.innerHTML = `
         <input type="hidden" name="sp_questions[${questionIndex}][scale][${nextScaleIndex}][value]" value="${nextVal}" />
         <input type="number" class="small-text" value="${nextVal}" readonly />
-        <input type="text" class="regular-text" name="sp_questions[${questionIndex}][scale][${nextScaleIndex}][label]" placeholder="Label for ${nextVal}" />
+        <input type="text" class="regular-text" name="sp_questions[${questionIndex}][scale][${nextScaleIndex}][label]" placeholder="Label for ${nextVal}" maxlength="120" data-sp-maxlength="120" />
       `;
       scaleContainer.appendChild(row);
       updateScaleRowTrash(card);
@@ -702,14 +751,14 @@
           <div class="sp-page-break-line"></div>
           <span class="sp-page-break-label">Page Break</span>
           <span class="sp-block-move-actions" role="group" aria-label="Reorder">
-            <button type="button" class="button-link sp-move-btn sp-move-up" aria-label="Move up">
+            <button type="button" class="button-link sp-move-btn sp-move-up" aria-label="Move Element Up" title="Move Element Up">
               ${upArrowUrl ? `<img src="${upArrowUrl}" alt="" class="sp-move-icon" width="24" height="24" />` : ""}
             </button>
-            <button type="button" class="button-link sp-move-btn sp-move-down" aria-label="Move down">
+            <button type="button" class="button-link sp-move-btn sp-move-down" aria-label="Move Element Down" title="Move Element Down">
               ${downArrowUrl ? `<img src="${downArrowUrl}" alt="" class="sp-move-icon" width="24" height="24" />` : ""}
             </button>
           </span>
-          <button type="button" class="button-link sp-page-break-remove" aria-label="Remove page break">
+          <button type="button" class="button-link sp-page-break-remove" aria-label="Delete Page Break" title="Delete Page Break">
             ${trashIconUrl
               ? `<img src="${trashIconUrl}" alt="" class="sp-trash-icon" width="22" height="22">`
               : `<span class="dashicons dashicons-trash"></span>`}
@@ -718,7 +767,7 @@
         </div>
         <div class="sp-page-header-field">
           <label class="sp-page-header-label">Page <span class="sp-page-number-display"></span> Header</label>
-          <input type="text" class="regular-text sp-page-header-input" name="" placeholder="Optional page header\u2026">
+          <input type="text" class="regular-text sp-page-header-input" name="" placeholder="Optional page header\u2026" maxlength="120" data-sp-maxlength="120">
         </div>
       `;
       questionsList.appendChild(pb);
@@ -840,7 +889,7 @@
         row.innerHTML = `
           <input type="hidden" name="sp_questions[${questionIndex}][scale][${scaleIndex}][value]" value="${item.value}" />
           <input type="number" class="small-text" value="${item.value}" readonly />
-          <input type="text" class="regular-text" name="sp_questions[${questionIndex}][scale][${scaleIndex}][label]" placeholder="Label for ${item.value}" />
+          <input type="text" class="regular-text" name="sp_questions[${questionIndex}][scale][${scaleIndex}][label]" placeholder="Label for ${item.value}" maxlength="120" data-sp-maxlength="120" />
         `;
         const labelInput = row.querySelector('input[type="text"]');
         if (labelInput && item.label) labelInput.value = item.label;
@@ -978,19 +1027,193 @@
     const emailMessageRow        = document.getElementById("sp-email-message-row");
     const emailMessageTextarea   = document.getElementById("sp_email_message");
     const emailMessageError      = document.getElementById("sp-email-message-error");
-    const sendPdfRow             = document.getElementById("sp-send-pdf-row");
+    const emailPdfColumn         = document.getElementById("sp-email-pdf-column");
     const sendPdfCheckbox        = document.getElementById("sp_send_pdf_report");
+    const pdfLogoRow             = document.getElementById("sp-pdf-logo-row");
+
+    const syncPdfLogoVisibility = () => {
+      if (!pdfLogoRow) return;
+      const show =
+        Boolean(emailMessagingCheckbox?.checked) && Boolean(sendPdfCheckbox?.checked);
+      pdfLogoRow.style.display = show ? "" : "none";
+    };
 
     if (emailMessagingCheckbox) {
       emailMessagingCheckbox.addEventListener("change", () => {
         const checked = emailMessagingCheckbox.checked;
         if (emailMessageRow) emailMessageRow.style.display = checked ? "" : "none";
-        if (sendPdfRow)      sendPdfRow.style.display      = checked ? "" : "none";
+        if (emailPdfColumn) emailPdfColumn.style.display = checked ? "" : "none";
         if (!checked) {
           if (emailMessageError) emailMessageError.style.display = "none";
           emailMessageTextarea?.classList.remove("sp-input-error");
-          // Also uncheck the PDF checkbox when email is disabled
           if (sendPdfCheckbox) sendPdfCheckbox.checked = false;
+        }
+        syncPdfLogoVisibility();
+      });
+    }
+
+    if (sendPdfCheckbox) {
+      sendPdfCheckbox.addEventListener("change", syncPdfLogoVisibility);
+    }
+
+    syncPdfLogoVisibility();
+
+    // PDF logo: show local preview as soon as a file is chosen (before save).
+    const pdfLogoFileInput = document.getElementById("sp_pdf_report_logo");
+    const pdfLogoPreviewLive = document.getElementById("sp-pdf-logo-preview-live");
+    const pdfLogoPreviewLiveImg = document.getElementById("sp-pdf-logo-preview-live-img");
+    const pdfLogoPreviewSaved = document.getElementById("sp-pdf-logo-preview-saved");
+    const pdfLogoRemoveHidden = document.getElementById("sp_remove_pdf_report_logo");
+    const pdfLogoRemoveLiveBtn = document.getElementById("sp-pdf-logo-remove-live-btn");
+    const pdfLogoRemoveSavedBtn = document.getElementById("sp-pdf-logo-remove-saved-btn");
+    const pdfLogoChooseBtn = document.getElementById("sp-pdf-logo-choose-btn");
+    const pdfLogoFilenameEl = document.getElementById("sp-pdf-logo-filename");
+
+    function spPdfLogoSyncFilenameLabel() {
+      if (!pdfLogoFilenameEl || !pdfLogoFileInput) return;
+      const emptyText = pdfLogoFilenameEl.getAttribute("data-empty-text") || "";
+      const f = pdfLogoFileInput.files && pdfLogoFileInput.files[0];
+      pdfLogoFilenameEl.textContent = f ? f.name : emptyText;
+    }
+
+    function spPdfLogoHideLivePreview() {
+      if (pdfLogoPreviewLive) {
+        pdfLogoPreviewLive.style.display = "none";
+        pdfLogoPreviewLive.setAttribute("hidden", "");
+      }
+      if (pdfLogoPreviewLiveImg) {
+        pdfLogoPreviewLiveImg.src = "";
+      }
+      if (pdfLogoPreviewSaved) {
+        const hideSaved =
+          pdfLogoRemoveHidden && String(pdfLogoRemoveHidden.value || "") === "1";
+        pdfLogoPreviewSaved.style.display = hideSaved ? "none" : "";
+      }
+    }
+
+    function spPdfLogoShowLivePreview(dataUrl) {
+      if (!pdfLogoPreviewLive || !pdfLogoPreviewLiveImg || !dataUrl) return;
+      pdfLogoPreviewLiveImg.src = dataUrl;
+      pdfLogoPreviewLive.style.display = "";
+      pdfLogoPreviewLive.removeAttribute("hidden");
+      if (pdfLogoPreviewSaved) {
+        pdfLogoPreviewSaved.style.display = "none";
+      }
+    }
+
+    function spPdfLogoFileIsAllowedImage(file) {
+      if (!file || !file.type) return false;
+      if (file.type === "image/jpeg" || file.type === "image/png") return true;
+      const name = (file.name || "").toLowerCase();
+      return /\.(jpe?g|png)$/.test(name);
+    }
+
+    /** Last good local file so Cancel in the file picker does not clear the selection. */
+    let spPdfLogoLastValidFile = null;
+
+    function spPdfLogoRestoreFileInput(file) {
+      if (!pdfLogoFileInput || !file) return false;
+      try {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        pdfLogoFileInput.files = dt.files;
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    if (pdfLogoFileInput && pdfLogoPreviewLive && pdfLogoPreviewLiveImg) {
+      pdfLogoFileInput.addEventListener("change", () => {
+        try {
+          const file = pdfLogoFileInput.files && pdfLogoFileInput.files[0];
+
+          if (!file) {
+            if (spPdfLogoLastValidFile && spPdfLogoRestoreFileInput(spPdfLogoLastValidFile)) {
+              return;
+            }
+            spPdfLogoLastValidFile = null;
+            spPdfLogoHideLivePreview();
+            return;
+          }
+
+          if (!spPdfLogoFileIsAllowedImage(file)) {
+            spPdfLogoHideLivePreview();
+            if (spPdfLogoLastValidFile && spPdfLogoRestoreFileInput(spPdfLogoLastValidFile)) {
+              return;
+            }
+            pdfLogoFileInput.value = "";
+            spPdfLogoLastValidFile = null;
+            return;
+          }
+
+          spPdfLogoLastValidFile = file;
+
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = typeof reader.result === "string" ? reader.result : "";
+            if (result) {
+              if (pdfLogoRemoveHidden) {
+                pdfLogoRemoveHidden.value = "";
+              }
+              spPdfLogoShowLivePreview(result);
+            }
+          };
+          reader.onerror = () => {
+            spPdfLogoHideLivePreview();
+          };
+          reader.readAsDataURL(file);
+        } finally {
+          spPdfLogoSyncFilenameLabel();
+        }
+      });
+    }
+
+    if (pdfLogoChooseBtn && pdfLogoFileInput) {
+      pdfLogoChooseBtn.addEventListener("click", () => {
+        pdfLogoFileInput.click();
+      });
+    }
+
+    /** Clear pending file only (create / new selection); do not remove saved attachment on save. */
+    if (pdfLogoRemoveLiveBtn && pdfLogoFileInput) {
+      pdfLogoRemoveLiveBtn.addEventListener("click", () => {
+        spPdfLogoLastValidFile = null;
+        pdfLogoFileInput.value = "";
+        spPdfLogoSyncFilenameLabel();
+        if (pdfLogoPreviewLive) {
+          pdfLogoPreviewLive.style.display = "none";
+          pdfLogoPreviewLive.setAttribute("hidden", "");
+        }
+        if (pdfLogoPreviewLiveImg) {
+          pdfLogoPreviewLiveImg.src = "";
+        }
+        if (
+          pdfLogoPreviewSaved &&
+          pdfLogoRemoveHidden &&
+          String(pdfLogoRemoveHidden.value || "") !== "1"
+        ) {
+          pdfLogoPreviewSaved.style.display = "";
+        }
+      });
+    }
+
+    /** Mark saved logo for removal on save (edit only). */
+    if (pdfLogoRemoveSavedBtn && pdfLogoRemoveHidden && pdfLogoFileInput) {
+      pdfLogoRemoveSavedBtn.addEventListener("click", () => {
+        spPdfLogoLastValidFile = null;
+        pdfLogoFileInput.value = "";
+        pdfLogoRemoveHidden.value = "1";
+        spPdfLogoSyncFilenameLabel();
+        if (pdfLogoPreviewLive) {
+          pdfLogoPreviewLive.style.display = "none";
+          pdfLogoPreviewLive.setAttribute("hidden", "");
+        }
+        if (pdfLogoPreviewLiveImg) {
+          pdfLogoPreviewLiveImg.src = "";
+        }
+        if (pdfLogoPreviewSaved) {
+          pdfLogoPreviewSaved.style.display = "none";
         }
       });
     }
@@ -1328,6 +1551,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
+    initHardCharacterMax();
     initAutoExpand();
     initQuestionBuilder();
     initDashboardCards();

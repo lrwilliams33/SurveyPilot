@@ -14,7 +14,7 @@ $start_url = esc_url(add_query_arg(['sp_step' => 'start', 'sp_survey_id' => (int
 
     <div class="sp-confirmation-text">
         <h2>Thank You!</h2>
-        <p>Your survey has been successfully submitted.</p>
+        <p>Your response has been successfully submitted.</p>
     </div>
 
     <div class="sp-confirmation-actions">

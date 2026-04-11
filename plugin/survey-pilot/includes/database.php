@@ -19,6 +19,7 @@ function add_tables(){
         send_email_message TINYINT(1) NOT NULL DEFAULT 0,
         email_message TEXT NULL,
         send_pdf_report TINYINT(1) NOT NULL DEFAULT 0,
+        pdf_report_logo_attachment_id BIGINT UNSIGNED NULL DEFAULT NULL,
         survey_layout LONGTEXT NULL,
         sort_order INT UNSIGNED NOT NULL DEFAULT 0,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -118,6 +119,28 @@ function sp_run_survey_pilot_db_upgrade_to_18() {
     add_tables();
 }
 
+/**
+ * Add pdf_report_logo_attachment_id to survey_info for custom PDF header logos.
+ */
+function sp_run_survey_pilot_db_upgrade_to_19() {
+    global $wpdb;
+
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+    add_tables();
+
+    $table = $wpdb->prefix . 'survey_info';
+    $has_col = $wpdb->get_results(
+        $wpdb->prepare("SHOW COLUMNS FROM {$table} LIKE %s", 'pdf_report_logo_attachment_id')
+    );
+    if (empty($has_col)) {
+        $wpdb->query(
+            "ALTER TABLE {$table} ADD COLUMN pdf_report_logo_attachment_id BIGINT UNSIGNED NULL DEFAULT NULL AFTER send_pdf_report"
+        );
+    }
+
+    add_tables();
+}
+
 /*Helper function to create a slug, which is the extension for a survey table name that follows the wp prefix.
 This slug will be used to create a valid database name extension
 */
@@ -139,7 +162,7 @@ Following functions are for adding rows to the tables
 */
 
 //This function adds into the survey_info table to store created surveys
-function sp_add_survey_info_row($title, $description = null, $instructions = null, $send_email_message = 0, $email_message = null, $send_pdf_report = 0, $survey_layout = null) {
+function sp_add_survey_info_row($title, $description = null, $instructions = null, $send_email_message = 0, $email_message = null, $send_pdf_report = 0, $survey_layout = null, $pdf_report_logo_attachment_id = null) {
     global $wpdb;
 
     // Store raw text; rely on escaping on output to prevent XSS.
@@ -152,17 +175,21 @@ function sp_add_survey_info_row($title, $description = null, $instructions = nul
         : null;
     $send_pdf_report = $send_pdf_report ? 1 : 0;
     $survey_layout = ($survey_layout !== null && $survey_layout !== '') ? (string) $survey_layout : null;
+    $pdf_logo_id = ($pdf_report_logo_attachment_id !== null && (int) $pdf_report_logo_attachment_id > 0)
+        ? (int) $pdf_report_logo_attachment_id
+        : null;
 
     $insert_status = $wpdb->insert(
         $wpdb->prefix . 'survey_info',
         [
-            'title'               => $title,
-            'survey_description'  => $description,
-            'instructions'        => $instructions,
-            'send_email_message'  => $send_email_message,
-            'email_message'       => $email_message,
-            'send_pdf_report'     => $send_pdf_report,
-            'survey_layout'       => $survey_layout,
+            'title'                           => $title,
+            'survey_description'              => $description,
+            'instructions'                    => $instructions,
+            'send_email_message'              => $send_email_message,
+            'email_message'                   => $email_message,
+            'send_pdf_report'                 => $send_pdf_report,
+            'pdf_report_logo_attachment_id'   => $pdf_logo_id,
+            'survey_layout'                   => $survey_layout,
         ],
         [
             '%s',
@@ -170,6 +197,7 @@ function sp_add_survey_info_row($title, $description = null, $instructions = nul
             '%s',
             '%d',
             '%s',
+            '%d',
             '%d',
             '%s',
         ]
@@ -378,7 +406,7 @@ function sp_save_survey_submission($survey_id, array $answers, $user_id = null) 
 /**
  * Update survey_info fields (title/description/instructions) and always bump updated_at.
  */
-function sp_update_survey_info_row($survey_id, $title, $description = null, $instructions = null, $send_email_message = 0, $email_message = null, $send_pdf_report = 0, $survey_layout = null) {
+function sp_update_survey_info_row($survey_id, $title, $description = null, $instructions = null, $send_email_message = 0, $email_message = null, $send_pdf_report = 0, $survey_layout = null, $pdf_report_logo_attachment_id = null) {
     global $wpdb;
 
     $survey_id = intval($survey_id);
@@ -396,18 +424,22 @@ function sp_update_survey_info_row($survey_id, $title, $description = null, $ins
         : null;
     $send_pdf_report = $send_pdf_report ? 1 : 0;
     $survey_layout = ($survey_layout !== null && $survey_layout !== '') ? (string) $survey_layout : null;
+    $pdf_logo_id = ($pdf_report_logo_attachment_id !== null && (int) $pdf_report_logo_attachment_id > 0)
+        ? (int) $pdf_report_logo_attachment_id
+        : null;
 
     $update_status = $wpdb->update(
         $wpdb->prefix . 'survey_info',
         [
-            'title'               => $title,
-            'survey_description'  => $description,
-            'instructions'        => $instructions,
-            'send_email_message'  => $send_email_message,
-            'email_message'       => $email_message,
-            'send_pdf_report'     => $send_pdf_report,
-            'survey_layout'       => $survey_layout,
-            'updated_at'          => current_time('mysql'),
+            'title'                           => $title,
+            'survey_description'              => $description,
+            'instructions'                    => $instructions,
+            'send_email_message'              => $send_email_message,
+            'email_message'                   => $email_message,
+            'send_pdf_report'                 => $send_pdf_report,
+            'pdf_report_logo_attachment_id'   => $pdf_logo_id,
+            'survey_layout'                   => $survey_layout,
+            'updated_at'                      => current_time('mysql'),
         ],
         [
             'id' => $survey_id
@@ -418,6 +450,7 @@ function sp_update_survey_info_row($survey_id, $title, $description = null, $ins
             '%s',
             '%d',
             '%s',
+            '%d',
             '%d',
             '%s',
             '%s',

@@ -462,11 +462,11 @@ function sp_handle_submit_survey() {
         wp_die('Invalid survey ID');
     }
 
-    // Merge session-stored answers with form submission answers
-    // Session answers are from previous pages
+    // Merge session-stored answers with form submission answers (previous pages + this POST).
+    // Use array_replace, not array_merge: array_merge reindexes numeric keys and destroys question IDs.
     $session_key = 'sp_survey_answers_' . $survey_id;
     if (isset($_SESSION[$session_key]) && is_array($_SESSION[$session_key])) {
-        $answers = array_merge($_SESSION[$session_key], $answers);
+        $answers = array_replace($_SESSION[$session_key], $answers);
     }
 
     if (empty($answers)) {
@@ -718,7 +718,7 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
 
     $survey = $wpdb->get_row(
         $wpdb->prepare(
-            "SELECT title, send_email_message, email_message, send_pdf_report FROM $survey_table WHERE id = %d",
+            "SELECT title, send_email_message, email_message, send_pdf_report, pdf_report_logo_attachment_id FROM $survey_table WHERE id = %d",
             $survey_id
         )
     );
@@ -844,8 +844,18 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
     $attachments = [];
 
     if ($include_pdf) {
-        $message .= '<p>Attached below is a PDF report summarizing your responses and how they compare to others.</p>';
-        $pdf_path = sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_means, $formatted_individual_results);
+        $message .= '<p>Attached is a PDF report summarizing your responses and how they compare to others.</p>';
+        $pdf_logo_id = isset($survey->pdf_report_logo_attachment_id)
+            ? (int) $survey->pdf_report_logo_attachment_id
+            : 0;
+        $pdf_path = sp_generate_survey_pdf(
+            $survey_title,
+            $response_id,
+            $results,
+            $sample_means,
+            $formatted_individual_results,
+            $pdf_logo_id > 0 ? $pdf_logo_id : null
+        );
         if (!is_wp_error($pdf_path)) {
             $attachments[] = $pdf_path;
         } else {
