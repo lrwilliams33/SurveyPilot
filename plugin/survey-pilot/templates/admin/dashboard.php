@@ -29,7 +29,7 @@ foreach ($raw_counts as $rc) {
                 <span class="sp-survey-list-label">Your Surveys</span>
                 <div class="sp-list-header-right">
                     <div class="sp-sort-wrapper">
-                        <label for="sp-sort-select" class="sp-sort-label">Sort by:</label>
+                        <label for="sp-sort-select" class="sp-sort-label">Sort By:</label>
                         <select id="sp-sort-select" class="sp-sort-select">
                             <option value="updated_desc">Last Updated (Newest First)</option>
                             <option value="updated_asc">Last Updated (Oldest First)</option>
@@ -43,22 +43,31 @@ foreach ($raw_counts as $rc) {
                         (function(){var s=localStorage.getItem('sp_sort_order');if(s){var el=document.getElementById('sp-sort-select');if(el)el.value=s;}})();
                         </script>
                     </div>
-                    <a href="<?php echo admin_url('admin.php?page=sp-create-survey'); ?>" class="button button-primary sp-btn-large">+ Create Survey</a>
+                    <a href="<?php echo admin_url('admin.php?page=survey-pilot-create-survey'); ?>" class="button button-primary sp-btn-large">+ Create Survey</a>
                 </div>
             </div>
             <?php if (!empty($surveys)) : ?>
                 <div class="sp-survey-list" style="visibility:hidden">
                     <?php foreach ($surveys as $survey) : ?>
                         <?php
-                        $edit_url      = admin_url('admin.php?page=sp-create-survey&action=edit&id=' . intval($survey['id']));
+                        $edit_url      = admin_url('admin.php?page=survey-pilot-create-survey&action=edit&id=' . intval($survey['id']));
                         $duplicate_url = wp_nonce_url(
                             admin_url('admin-post.php?action=sp_duplicate_survey&survey_id=' . intval($survey['id'])),
                             'sp_duplicate_survey_' . intval($survey['id'])
                         );
                         $delete_url = wp_nonce_url(
-                            admin_url('admin.php?page=survey-pilot&action=delete&id=' . intval($survey['id'])),
+                            admin_url('admin.php?page=survey-pilot-dashboard&action=delete&id=' . intval($survey['id'])),
                             'sp_delete_survey_' . intval($survey['id'])
                         );
+                        $response_count = (int) ($response_counts[ (int) $survey['id'] ] ?? 0);
+                        $response_count_label = sprintf(
+                            _n('%s response', '%s responses', $response_count, 'survey-pilot'),
+                            number_format_i18n($response_count)
+                        );
+                        $edit_status_class = $response_count === 0 ? 'sp-survey-edit-status--full' : 'sp-survey-edit-status--partial';
+                        $edit_status_text    = $response_count === 0
+                            ? __('Fully Editable', 'survey-pilot')
+                            : __('Partially Editable', 'survey-pilot');
                         ?>
                         <div class="sp-survey-card"
                              data-edit-url="<?php echo esc_url($edit_url); ?>"
@@ -66,16 +75,35 @@ foreach ($raw_counts as $rc) {
                              data-title="<?php echo esc_attr($survey['title']); ?>"
                              data-created="<?php echo esc_attr(str_replace(' ', 'T', $survey['created_at'])); ?>"
                              data-updated="<?php echo esc_attr(str_replace(' ', 'T', $survey['updated_at'])); ?>"
-                             data-sort-order="<?php echo (int) ($survey['sort_order'] ?? 0); ?>">
+                             data-sort-order="<?php echo (int) ($survey['sort_order'] ?? 0); ?>"
+                             data-response-count="<?php echo (int) $response_count; ?>">
                             <div class="sp-survey-info">
                                 <span class="sp-survey-title"><?php echo esc_html($survey['title']); ?></span>
                                 <?php if (!empty($survey['survey_description'])) : ?>
-                                    <span class="sp-survey-desc"><?php echo esc_html($survey['survey_description']); ?></span>
+                                    <div class="sp-survey-desc"><?php echo esc_html($survey['survey_description']); ?></div>
                                 <?php endif; ?>
                                 <span class="sp-survey-shortcode-display">
-                                    <code>[survey_pilot name="<?php echo esc_attr($survey['title']); ?>"]</code><button type="button" class="sp-copy-btn" data-shortcode="<?php echo esc_attr('[survey_pilot name="' . $survey['title'] . '"]'); ?>" title="Copy shortcode"><img src="<?php echo esc_url(SP_URL . 'assets/images/copy.svg'); ?>" alt="Copy" class="sp-copy-icon" width="16" height="16"></button>
+                                    <span class="sp-survey-shortcode-box">
+                                        <span class="sp-survey-shortcode-inline">
+                                            <code>[survey_pilot name="<?php echo esc_attr($survey['title']); ?>"]</code><button type="button" class="sp-copy-btn" data-shortcode="<?php echo esc_attr('[survey_pilot name="' . $survey['title'] . '"]'); ?>" title="Copy Shortcode"><img src="<?php echo esc_url(SP_URL . 'assets/images/copy.svg'); ?>" alt="Copy" class="sp-copy-icon" width="16" height="16"></button>
+                                        </span>
+                                    </span>
+                                    <span class="sp-survey-response-count">
+                                        <?php echo esc_html($response_count_label); ?>
+                                        <span class="sp-survey-response-count-sep"> &rarr; </span>
+                                        <span class="sp-survey-edit-status <?php echo esc_attr($edit_status_class); ?>"><?php echo esc_html($edit_status_text); ?></span>
+                                    </span>
                                 </span>
                             </div>
+                            <div class="sp-survey-card-toolbar">
+                                <span class="sp-survey-reorder-actions" role="group" aria-label="<?php esc_attr_e('Reorder survey in list', 'survey-pilot'); ?>">
+                                    <button type="button" class="button-link sp-survey-move-btn sp-survey-move-up" aria-label="Move Element Up" title="Move Element Up">
+                                        <img src="<?php echo esc_url(SP_URL . 'assets/images/up-arrow.png'); ?>" alt="" width="20" height="20" class="sp-survey-move-icon">
+                                    </button>
+                                    <button type="button" class="button-link sp-survey-move-btn sp-survey-move-down" aria-label="Move Element Down" title="Move Element Down">
+                                        <img src="<?php echo esc_url(SP_URL . 'assets/images/down-arrow.png'); ?>" alt="" width="20" height="20" class="sp-survey-move-icon">
+                                    </button>
+                                </span>
                             <div class="sp-survey-actions">
                                 <button type="button" class="button-link sp-survey-menu-toggle" aria-haspopup="true" aria-expanded="false" aria-label="<?php esc_attr_e('Survey actions', 'survey-pilot'); ?>" title="<?php esc_attr_e('Options', 'survey-pilot'); ?>">
                                     <span class="sp-survey-menu-icon-wrapper">
@@ -85,9 +113,10 @@ foreach ($raw_counts as $rc) {
                                 <div class="sp-survey-menu" role="menu">
                                     <a href="<?php echo esc_url($edit_url); ?>" class="sp-survey-menu-item" role="menuitem">Edit</a>
                                     <a href="<?php echo esc_url($duplicate_url); ?>" class="sp-survey-menu-item sp-duplicate-btn" role="menuitem" data-survey-title="<?php echo esc_attr($survey['title']); ?>">Duplicate</a>
-                                    <button type="button" class="sp-survey-menu-item sp-survey-menu-item-export" role="menuitem" data-sp-export-survey-id="<?php echo (int) $survey['id']; ?>" data-sp-survey-title="<?php echo esc_attr($survey['title']); ?>" data-sp-response-count="<?php echo (int) ($response_counts[ (int) $survey['id'] ] ?? 0); ?>">Export Responses</button>
+                                    <button type="button" class="sp-survey-menu-item sp-survey-menu-item-export" role="menuitem" data-sp-export-survey-id="<?php echo (int) $survey['id']; ?>" data-sp-survey-title="<?php echo esc_attr($survey['title']); ?>" data-sp-response-count="<?php echo (int) $response_count; ?>">Export Responses</button>
                                     <a href="<?php echo esc_url($delete_url); ?>" data-sp-delete-url="<?php echo esc_url($delete_url); ?>" data-sp-survey-title="<?php echo esc_attr($survey['title']); ?>" class="sp-survey-menu-item sp-survey-menu-item-delete" role="menuitem">Delete</a>
                                 </div>
+                            </div>
                             </div>
                         </div>
                     <?php endforeach; ?>

@@ -16,10 +16,11 @@ function add_tables(){
         title VARCHAR(255) NOT NULL,
         survey_description TEXT NULL,
         instructions TEXT NULL,
-        page_headers LONGTEXT NULL,
         send_email_message TINYINT(1) NOT NULL DEFAULT 0,
         email_message TEXT NULL,
         send_pdf_report TINYINT(1) NOT NULL DEFAULT 0,
+        pdf_report_logo_attachment_id BIGINT UNSIGNED NULL DEFAULT NULL,
+        survey_layout LONGTEXT NULL,
         sort_order INT UNSIGNED NOT NULL DEFAULT 0,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -36,7 +37,6 @@ function add_tables(){
         scale_max TINYINT UNSIGNED NOT NULL,
         scale_labels LONGTEXT NULL,
         question_order INT UNSIGNED NOT NULL,
-        page_number TINYINT UNSIGNED NOT NULL DEFAULT 1,
         PRIMARY KEY  (id)
     ) $charset_collate;";
 
@@ -67,6 +67,80 @@ function add_tables(){
     dbDelta($sql_survey_response_answers);
 }
 
+/**
+ * Migrate stored surveys to survey_layout-only schema and drop legacy columns.
+ * Requires includes/survey-layout.php to be loaded first.
+ */
+function sp_run_survey_pilot_db_upgrade_to_18() {
+    global $wpdb;
+
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+    add_tables();
+
+    if (function_exists('sp_build_survey_layout_from_legacy_survey_row')) {
+        $table = $wpdb->prefix . 'survey_info';
+        $surveys = $wpdb->get_results("SELECT * FROM {$table}", ARRAY_A);
+        if (is_array($surveys)) {
+            foreach ($surveys as $row) {
+                if (!empty($row['survey_layout'])) {
+                    continue;
+                }
+                $questions = $wpdb->get_results(
+                    $wpdb->prepare(
+                        "SELECT * FROM {$wpdb->prefix}survey_questions WHERE survey_id = %d ORDER BY question_order ASC, id ASC",
+                        $row['id']
+                    ),
+                    ARRAY_A
+                );
+                $json = sp_build_survey_layout_from_legacy_survey_row($row, is_array($questions) ? $questions : []);
+                $wpdb->update(
+                    $table,
+                    ['survey_layout' => $json],
+                    ['id' => $row['id']],
+                    ['%s'],
+                    ['%d']
+                );
+            }
+        }
+    }
+
+    $info = $wpdb->prefix . 'survey_info';
+    $has_ph = $wpdb->get_results("SHOW COLUMNS FROM {$info} LIKE 'page_headers'");
+    if (!empty($has_ph)) {
+        $wpdb->query("ALTER TABLE {$info} DROP COLUMN page_headers");
+    }
+
+    $qt = $wpdb->prefix . 'survey_questions';
+    $has_pn = $wpdb->get_results("SHOW COLUMNS FROM {$qt} LIKE 'page_number'");
+    if (!empty($has_pn)) {
+        $wpdb->query("ALTER TABLE {$qt} DROP COLUMN page_number");
+    }
+
+    add_tables();
+}
+
+/**
+ * Add pdf_report_logo_attachment_id to survey_info for custom PDF header logos.
+ */
+function sp_run_survey_pilot_db_upgrade_to_19() {
+    global $wpdb;
+
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+    add_tables();
+
+    $table = $wpdb->prefix . 'survey_info';
+    $has_col = $wpdb->get_results(
+        $wpdb->prepare("SHOW COLUMNS FROM {$table} LIKE %s", 'pdf_report_logo_attachment_id')
+    );
+    if (empty($has_col)) {
+        $wpdb->query(
+            "ALTER TABLE {$table} ADD COLUMN pdf_report_logo_attachment_id BIGINT UNSIGNED NULL DEFAULT NULL AFTER send_pdf_report"
+        );
+    }
+
+    add_tables();
+}
+
 /*Helper function to create a slug, which is the extension for a survey table name that follows the wp prefix.
 This slug will be used to create a valid database name extension
 */
@@ -88,38 +162,44 @@ Following functions are for adding rows to the tables
 */
 
 //This function adds into the survey_info table to store created surveys
-function sp_add_survey_info_row($title, $description = null, $instructions = null, $page_headers = null, $send_email_message = 0, $email_message = null, $send_pdf_report = 0) {
+function sp_add_survey_info_row($title, $description = null, $instructions = null, $send_email_message = 0, $email_message = null, $send_pdf_report = 0, $survey_layout = null, $pdf_report_logo_attachment_id = null) {
     global $wpdb;
 
-    //fetch the title, description, and instructions and format
-    $title = sanitize_text_field($title);
-    $description = sanitize_textarea_field($description);
-    $instructions = sanitize_textarea_field($instructions);
-    // page_headers is already a JSON string or null; sanitize as text
-    $page_headers = ($page_headers !== null && $page_headers !== '') ? sanitize_textarea_field($page_headers) : null;
+    // Store raw text; rely on escaping on output to prevent XSS.
+    $title        = is_string($title) ? trim($title) : '';
+    $description  = is_string($description) ? trim($description) : null;
+    $instructions = is_string($instructions) ? trim($instructions) : null;
     $send_email_message = $send_email_message ? 1 : 0;
-    $email_message = ($email_message !== null && $email_message !== '') ? sanitize_textarea_field($email_message) : null;
+    $email_message = ($email_message !== null && $email_message !== '')
+        ? trim((string) $email_message)
+        : null;
     $send_pdf_report = $send_pdf_report ? 1 : 0;
+    $survey_layout = ($survey_layout !== null && $survey_layout !== '') ? (string) $survey_layout : null;
+    $pdf_logo_id = ($pdf_report_logo_attachment_id !== null && (int) $pdf_report_logo_attachment_id > 0)
+        ? (int) $pdf_report_logo_attachment_id
+        : null;
 
     $insert_status = $wpdb->insert(
         $wpdb->prefix . 'survey_info',
         [
-            'title'               => $title,
-            'survey_description'  => $description,
-            'instructions'        => $instructions,
-            'page_headers'        => $page_headers,
-            'send_email_message'  => $send_email_message,
-            'email_message'       => $email_message,
-            'send_pdf_report'     => $send_pdf_report,
+            'title'                           => $title,
+            'survey_description'              => $description,
+            'instructions'                    => $instructions,
+            'send_email_message'              => $send_email_message,
+            'email_message'                   => $email_message,
+            'send_pdf_report'                 => $send_pdf_report,
+            'pdf_report_logo_attachment_id'   => $pdf_logo_id,
+            'survey_layout'                   => $survey_layout,
         ],
         [
             '%s',
             '%s',
             '%s',
-            '%s',
             '%d',
             '%s',
             '%d',
+            '%d',
+            '%s',
         ]
     );
 
@@ -145,24 +225,24 @@ function sp_add_survey_info_row($title, $description = null, $instructions = nul
 
 //This function adds a row to the survey_questions table for a given survey, with question text and scale info
 function sp_add_survey_question_row(
-    $survey_id, 
+    $survey_id,
     $question_text,
     $question_order,
-    $scale_min = 1, 
-    $scale_max = 5, 
-    $scale_labels = null,
-    $page_number = 1
-    ) 
-    {
+    $scale_min = 1,
+    $scale_max = 5,
+    $scale_labels = null
+) {
     global $wpdb;
 
-    $survey_id = intval($survey_id);
-    $question_text = sanitize_textarea_field($question_text);
-    $scale_min = intval($scale_min);
-    $scale_max = intval($scale_max);
-    $scale_labels = ($scale_labels !== null && $scale_labels !== '') ? sanitize_textarea_field($scale_labels) : null;
+    $survey_id      = intval($survey_id);
+    // Store raw text; escape on output.
+    $question_text  = is_string($question_text) ? trim($question_text) : '';
+    $scale_min      = intval($scale_min);
+    $scale_max      = intval($scale_max);
+    $scale_labels   = ($scale_labels !== null && $scale_labels !== '')
+        ? trim((string) $scale_labels)
+        : null;
     $question_order = intval($question_order);
-    $page_number = max(1, intval($page_number));
 
     if ($survey_id <= 0) {
         return new WP_Error('invalid_survey_id', 'Invalid survey ID provided');
@@ -183,13 +263,12 @@ function sp_add_survey_question_row(
     $insert_status = $wpdb->insert(
         $wpdb->prefix . 'survey_questions',
         [
-            'survey_id' => $survey_id,
-            'question_text' => $question_text,
-            'scale_min' => $scale_min,
-            'scale_max' => $scale_max,
-            'scale_labels' => $scale_labels,
+            'survey_id'      => $survey_id,
+            'question_text'  => $question_text,
+            'scale_min'      => $scale_min,
+            'scale_max'      => $scale_max,
+            'scale_labels'   => $scale_labels,
             'question_order' => $question_order,
-            'page_number' => $page_number,
         ],
         [
             '%d',
@@ -197,7 +276,6 @@ function sp_add_survey_question_row(
             '%d',
             '%d',
             '%s',
-            '%d',
             '%d',
         ]
     );
@@ -328,7 +406,7 @@ function sp_save_survey_submission($survey_id, array $answers, $user_id = null) 
 /**
  * Update survey_info fields (title/description/instructions) and always bump updated_at.
  */
-function sp_update_survey_info_row($survey_id, $title, $description = null, $instructions = null, $page_headers = null, $send_email_message = 0, $email_message = null, $send_pdf_report = 0) {
+function sp_update_survey_info_row($survey_id, $title, $description = null, $instructions = null, $send_email_message = 0, $email_message = null, $send_pdf_report = 0, $survey_layout = null, $pdf_report_logo_attachment_id = null) {
     global $wpdb;
 
     $survey_id = intval($survey_id);
@@ -336,25 +414,32 @@ function sp_update_survey_info_row($survey_id, $title, $description = null, $ins
         return new WP_Error('invalid_survey_id', 'Invalid survey ID provided');
     }
 
-    $title = sanitize_text_field($title);
-    $description = sanitize_textarea_field($description);
-    $instructions = sanitize_textarea_field($instructions);
-    $page_headers = ($page_headers !== null && $page_headers !== '') ? sanitize_textarea_field($page_headers) : null;
+    // Store raw text; rely on escaping on output to prevent XSS.
+    $title        = is_string($title) ? trim($title) : '';
+    $description  = is_string($description) ? trim($description) : null;
+    $instructions = is_string($instructions) ? trim($instructions) : null;
     $send_email_message = $send_email_message ? 1 : 0;
-    $email_message = ($email_message !== null && $email_message !== '') ? sanitize_textarea_field($email_message) : null;
+    $email_message = ($email_message !== null && $email_message !== '')
+        ? trim((string) $email_message)
+        : null;
     $send_pdf_report = $send_pdf_report ? 1 : 0;
+    $survey_layout = ($survey_layout !== null && $survey_layout !== '') ? (string) $survey_layout : null;
+    $pdf_logo_id = ($pdf_report_logo_attachment_id !== null && (int) $pdf_report_logo_attachment_id > 0)
+        ? (int) $pdf_report_logo_attachment_id
+        : null;
 
     $update_status = $wpdb->update(
         $wpdb->prefix . 'survey_info',
         [
-            'title'               => $title,
-            'survey_description'  => $description,
-            'instructions'        => $instructions,
-            'page_headers'        => $page_headers,
-            'send_email_message'  => $send_email_message,
-            'email_message'       => $email_message,
-            'send_pdf_report'     => $send_pdf_report,
-            'updated_at'          => current_time('mysql'),
+            'title'                           => $title,
+            'survey_description'              => $description,
+            'instructions'                    => $instructions,
+            'send_email_message'              => $send_email_message,
+            'email_message'                   => $email_message,
+            'send_pdf_report'                 => $send_pdf_report,
+            'pdf_report_logo_attachment_id'   => $pdf_logo_id,
+            'survey_layout'                   => $survey_layout,
+            'updated_at'                      => current_time('mysql'),
         ],
         [
             'id' => $survey_id
@@ -363,10 +448,11 @@ function sp_update_survey_info_row($survey_id, $title, $description = null, $ins
             '%s',
             '%s',
             '%s',
-            '%s',
             '%d',
             '%s',
             '%d',
+            '%d',
+            '%s',
             '%s',
         ],
         [

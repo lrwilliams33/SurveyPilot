@@ -5,7 +5,7 @@ add_action('admin_menu', function() {
         'SurveyPilot',
         'SurveyPilot',
         'manage_options',
-        'survey-pilot',
+        'survey-pilot-dashboard',
         'sp_render_dashboard',
         'dashicons-forms',
         6
@@ -13,11 +13,11 @@ add_action('admin_menu', function() {
 
     // Override the auto-generated duplicate submenu entry with the "Dashboard" label.
     add_submenu_page(
-        'survey-pilot',
+        'survey-pilot-dashboard',
         'Dashboard',
         'Dashboard',
         'manage_options',
-        'survey-pilot',
+        'survey-pilot-dashboard',
         'sp_render_dashboard'
     );
 
@@ -27,29 +27,31 @@ add_action('admin_menu', function() {
         'Create Survey',
         'Create Survey',
         'manage_options',
-        'sp-create-survey',
+        'survey-pilot-create-survey',
         'sp_render_create_survey_page'
     );
 });
 
 add_action('admin_enqueue_scripts', function() {
     $page = isset($_GET['page']) ? sanitize_key($_GET['page']) : '';
-    if (!in_array($page, ['survey-pilot', 'sp-create-survey', 'sp-email-settings'], true)) {
+    if (!in_array($page, ['survey-pilot-dashboard', 'survey-pilot-create-survey', 'survey-pilot-email-settings'], true)) {
         return;
     }
+
+    wp_enqueue_style('dashicons');
 
     wp_enqueue_style(
         'survey-pilot-admin',
         SP_URL . 'assets/css/admin.css',
-        [],
-        '2.0'
+        ['dashicons'],
+        '2.63'
     );
 
     wp_enqueue_script(
         'survey-pilot-admin',
         SP_URL . 'assets/js/admin.js',
         [],
-        '2.0',
+        '2.55',
         true
     );
 
@@ -147,7 +149,7 @@ function sp_handle_export_survey_csv() {
     // Questions ordered as they appear in the survey.
     $questions = $wpdb->get_results(
         $wpdb->prepare(
-            "SELECT id, question_text, question_order
+            "SELECT id, question_text, question_order, scale_min, scale_max
              FROM {$wpdb->prefix}survey_questions
              WHERE survey_id = %d
              ORDER BY question_order ASC",
@@ -190,7 +192,15 @@ function sp_handle_export_survey_csv() {
     $rows   = [];
     $header = ['Response ID', 'User ID', 'Submitted At'];
     foreach ($questions as $q) {
-        $header[] = 'Q' . $q['question_order'] . ': ' . $q['question_text'];
+        $scale_min = isset($q['scale_min']) ? (int) $q['scale_min'] : 1;
+        $scale_max = isset($q['scale_max']) ? (int) $q['scale_max'] : 5;
+        if ($scale_min <= 0) {
+            $scale_min = 1;
+        }
+        if ($scale_max < $scale_min) {
+            $scale_max = $scale_min;
+        }
+        $header[] = 'Q' . $q['question_order'] . ' (' . $scale_min . '-' . $scale_max . '): ' . $q['question_text'];
     }
     $rows[] = $header;
 
@@ -227,27 +237,100 @@ function sp_handle_export_survey_csv() {
     ]);
 }
 
-// Collect page header text boxes from POST and return a JSON string (or null if none submitted).
-// Keys are 1-based page numbers, values are the sanitized header strings (may be empty).
-function sp_build_page_headers_json() {
-    if (empty($_POST['sp_page_headers']) || !is_array($_POST['sp_page_headers'])) {
+/**
+ * Upload a .jpg / .jpeg / .png for the PDF report header. Uses WordPress upload + attachment APIs.
+ *
+ * @return int|null|WP_Error Attachment ID, null if no file submitted, WP_Error on failure.
+ */
+function sp_upload_survey_pdf_logo_file() {
+    if (empty($_FILES['sp_pdf_report_logo']) || !is_array($_FILES['sp_pdf_report_logo'])) {
         return null;
     }
 
-    $raw = $_POST['sp_page_headers'];
-    $headers = [];
-    foreach ($raw as $page_num => $value) {
-        $page_num = absint($page_num);
-        if ($page_num < 1) continue;
-        $headers[$page_num] = sanitize_text_field(wp_unslash($value));
-    }
+    $file = $_FILES['sp_pdf_report_logo'];
 
-    if (empty($headers)) {
+    if (empty($file['name']) || (isset($file['error']) && (int) $file['error'] === UPLOAD_ERR_NO_FILE)) {
         return null;
     }
 
-    ksort($headers);
-    return wp_json_encode($headers);
+    if (!isset($file['error']) || (int) $file['error'] !== UPLOAD_ERR_OK) {
+        return new WP_Error('sp_logo_upload', __('The logo file could not be uploaded.', 'survey-pilot'));
+    }
+
+    if (!current_user_can('upload_files')) {
+        return new WP_Error('sp_logo_cap', __('You do not have permission to upload files.', 'survey-pilot'));
+    }
+
+    $max_bytes = 2 * 1024 * 1024;
+    if (isset($file['size']) && (int) $file['size'] > $max_bytes) {
+        return new WP_Error('sp_logo_size', __('Logo must be 2 MB or smaller.', 'survey-pilot'));
+    }
+
+    $allowed_mimes = [
+        'jpg|jpeg' => 'image/jpeg',
+        'png'      => 'image/png',
+    ];
+
+    $checked = wp_check_filetype_and_ext($file['tmp_name'], $file['name'], $allowed_mimes);
+    if (empty($checked['ext']) || empty($checked['type'])) {
+        return new WP_Error('sp_logo_type', __('Only .jpg, .jpeg, or .png images are allowed for the PDF logo.', 'survey-pilot'));
+    }
+
+    if (!in_array($checked['type'], ['image/jpeg', 'image/png'], true)) {
+        return new WP_Error('sp_logo_type', __('Only .jpg, .jpeg, or .png images are allowed for the PDF logo.', 'survey-pilot'));
+    }
+
+    $imginfo = @getimagesize($file['tmp_name']);
+    if ($imginfo === false || !isset($imginfo[2])) {
+        return new WP_Error('sp_logo_invalid', __('The file is not a valid image.', 'survey-pilot'));
+    }
+
+    $allowed_types = [IMAGETYPE_JPEG, IMAGETYPE_PNG];
+    if (!in_array((int) $imginfo[2], $allowed_types, true)) {
+        return new WP_Error('sp_logo_invalid', __('Only .jpg, .jpeg, or .png images are allowed for the PDF logo.', 'survey-pilot'));
+    }
+
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    require_once ABSPATH . 'wp-admin/includes/media.php';
+
+    $upload = wp_handle_upload(
+        $file,
+        [
+            'test_form' => false,
+            'mimes'     => $allowed_mimes,
+        ]
+    );
+
+    if (isset($upload['error'])) {
+        return new WP_Error('sp_logo_upload', $upload['error']);
+    }
+
+    if (empty($upload['file']) || !is_string($upload['file'])) {
+        return new WP_Error('sp_logo_upload', __('The logo file could not be saved.', 'survey-pilot'));
+    }
+
+    $attachment = [
+        'post_mime_type' => $checked['type'],
+        'post_title'     => sanitize_file_name(pathinfo($file['name'], PATHINFO_FILENAME)),
+        'post_content'   => '',
+        'post_status'    => 'inherit',
+    ];
+
+    $attach_id = wp_insert_attachment($attachment, $upload['file']);
+    if (is_wp_error($attach_id) || !$attach_id) {
+        if (file_exists($upload['file'])) {
+            wp_delete_file($upload['file']);
+        }
+        return new WP_Error('sp_logo_attachment', __('Could not create the media attachment for the logo.', 'survey-pilot'));
+    }
+
+    $meta = wp_generate_attachment_metadata($attach_id, $upload['file']);
+    if (!empty($meta) && !is_wp_error($meta)) {
+        wp_update_attachment_metadata($attach_id, $meta);
+    }
+
+    return (int) $attach_id;
 }
 
 // Handle Create / Edit / Duplicate Survey Submission
@@ -256,6 +339,10 @@ add_action('admin_post_sp_edit_survey', 'sp_handle_edit_survey');
 add_action('admin_post_sp_duplicate_survey', 'sp_handle_duplicate_survey');
 
 function sp_handle_create_survey() {
+    if (!current_user_can('manage_options')) {
+        wp_die('Insufficient permissions');
+    }
+
     if (!isset($_POST['sp_survey_title'], $_POST['_wpnonce']) ||
         !wp_verify_nonce($_POST['_wpnonce'], 'sp_create_survey_nonce')) {
         wp_die('Security check failed');
@@ -274,9 +361,10 @@ function sp_handle_create_survey() {
     }
 
     // Create the survey
-    $survey_title = sanitize_text_field(wp_unslash($_POST['sp_survey_title']));
-    $description = isset($_POST['sp_survey_description']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_description'])) : null;
-    $instructions = isset($_POST['sp_survey_instructions']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_instructions'])) : null;
+    // Store raw text (no HTML execution) and rely on escaping on output.
+    $survey_title = isset($_POST['sp_survey_title']) ? trim((string) wp_unslash($_POST['sp_survey_title'])) : '';
+    $description  = isset($_POST['sp_survey_description']) ? trim((string) wp_unslash($_POST['sp_survey_description'])) : null;
+    $instructions = isset($_POST['sp_survey_instructions']) ? trim((string) wp_unslash($_POST['sp_survey_instructions'])) : null;
 
     global $wpdb;
     $duplicate = $wpdb->get_var(
@@ -286,29 +374,63 @@ function sp_handle_create_survey() {
         wp_die('A survey with that name already exists. Please choose a different title.', 'Duplicate Title', ['back_link' => true]);
     }
 
-    $page_headers_json = sp_build_page_headers_json();
-
     $send_email_message = !empty($_POST['sp_email_messaging']) ? 1 : 0;
-    $email_message      = isset($_POST['sp_email_message']) ? sanitize_textarea_field(wp_unslash($_POST['sp_email_message'])) : null;
+    $email_message      = isset($_POST['sp_email_message']) ? trim((string) wp_unslash($_POST['sp_email_message'])) : null;
     $send_pdf_report    = ($send_email_message && !empty($_POST['sp_send_pdf_report'])) ? 1 : 0;
 
     if ($send_email_message && empty(trim($email_message ?? ''))) {
-        wp_die('Message is required when "Send Email Message" is checked.', 'Validation Error', ['back_link' => true]);
+        wp_die('Message is required if "Send Email Message" is checked.', 'Validation Error', ['back_link' => true]);
     }
 
-    $survey_id = sp_add_survey_info_row($survey_title, $description, $instructions, $page_headers_json, $send_email_message, $email_message, $send_pdf_report);
+    $layout_result = sp_process_survey_layout_from_post(
+        isset($_POST['sp_survey_layout']) ? $_POST['sp_survey_layout'] : null,
+        $_POST['sp_questions'] ?? null,
+        $_POST['sp_page_headers'] ?? null
+    );
+    if (is_wp_error($layout_result)) {
+        wp_die(esc_html($layout_result->get_error_message()), 'Validation Error', ['back_link' => true]);
+    }
+
+    $logo_attachment_id = null;
+    if ($send_pdf_report) {
+        $upload_res = sp_upload_survey_pdf_logo_file();
+        if (is_wp_error($upload_res)) {
+            wp_die(esc_html($upload_res->get_error_message()), 'Validation Error', ['back_link' => true]);
+        }
+        if ($upload_res !== null && (int) $upload_res > 0) {
+            $logo_attachment_id = (int) $upload_res;
+        }
+    }
+
+    $survey_id = sp_add_survey_info_row(
+        $survey_title,
+        $description,
+        $instructions,
+        $send_email_message,
+        $email_message,
+        $send_pdf_report,
+        $layout_result,
+        $logo_attachment_id
+    );
 
     if (is_wp_error($survey_id)) {
+        if ($logo_attachment_id) {
+            wp_delete_attachment($logo_attachment_id, true);
+        }
         wp_die('Failed to create survey.');
     }
 
     sp_save_survey_questions_from_post($survey_id);
 
-    wp_redirect(admin_url('admin.php?page=survey-pilot&created=1'));
+    wp_redirect(admin_url('admin.php?page=survey-pilot-dashboard'));
     exit;
 }
 
 function sp_handle_edit_survey() {
+    if (!current_user_can('manage_options')) {
+        wp_die('Insufficient permissions');
+    }
+
     if (!isset($_POST['sp_survey_id'], $_POST['sp_survey_title'], $_POST['_wpnonce']) ||
         !wp_verify_nonce($_POST['_wpnonce'], 'sp_edit_survey_nonce')) {
         wp_die('Security check failed');
@@ -326,9 +448,9 @@ function sp_handle_edit_survey() {
     }
 
     $survey_id = intval($_POST['sp_survey_id']);
-    $survey_title = sanitize_text_field(wp_unslash($_POST['sp_survey_title']));
-    $description = isset($_POST['sp_survey_description']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_description'])) : null;
-    $instructions = isset($_POST['sp_survey_instructions']) ? sanitize_textarea_field(wp_unslash($_POST['sp_survey_instructions'])) : null;
+    $survey_title = isset($_POST['sp_survey_title']) ? trim((string) wp_unslash($_POST['sp_survey_title'])) : '';
+    $description  = isset($_POST['sp_survey_description']) ? trim((string) wp_unslash($_POST['sp_survey_description'])) : null;
+    $instructions = isset($_POST['sp_survey_instructions']) ? trim((string) wp_unslash($_POST['sp_survey_instructions'])) : null;
 
     global $wpdb;
     $duplicate = $wpdb->get_var(
@@ -342,17 +464,73 @@ function sp_handle_edit_survey() {
         wp_die('A survey with that name already exists. Please choose a different title.', 'Duplicate Title', ['back_link' => true]);
     }
 
-    $page_headers_json = sp_build_page_headers_json();
-
     $send_email_message = !empty($_POST['sp_email_messaging']) ? 1 : 0;
-    $email_message      = isset($_POST['sp_email_message']) ? sanitize_textarea_field(wp_unslash($_POST['sp_email_message'])) : null;
+    $email_message      = isset($_POST['sp_email_message']) ? trim((string) wp_unslash($_POST['sp_email_message'])) : null;
     $send_pdf_report    = ($send_email_message && !empty($_POST['sp_send_pdf_report'])) ? 1 : 0;
 
     if ($send_email_message && empty(trim($email_message ?? ''))) {
-        wp_die('Message is required when "Send Email Message" is checked.', 'Validation Error', ['back_link' => true]);
+        wp_die('Message is required if "Send Email Message" is checked.', 'Validation Error', ['back_link' => true]);
     }
 
-    $update_result = sp_update_survey_info_row($survey_id, $survey_title, $description, $instructions, $page_headers_json, $send_email_message, $email_message, $send_pdf_report);
+    $locked_check = sp_validate_locked_survey_edit($survey_id);
+    if (is_wp_error($locked_check)) {
+        wp_die(esc_html($locked_check->get_error_message()), 'Validation Error', ['back_link' => true]);
+    }
+
+    $layout_result = sp_process_survey_layout_from_post(
+        isset($_POST['sp_survey_layout']) ? $_POST['sp_survey_layout'] : null,
+        $_POST['sp_questions'] ?? null,
+        $_POST['sp_page_headers'] ?? null
+    );
+    if (is_wp_error($layout_result)) {
+        wp_die(esc_html($layout_result->get_error_message()), 'Validation Error', ['back_link' => true]);
+    }
+
+    $current_logo_row = $wpdb->get_row(
+        $wpdb->prepare(
+            "SELECT pdf_report_logo_attachment_id FROM {$wpdb->prefix}survey_info WHERE id = %d",
+            $survey_id
+        ),
+        ARRAY_A
+    );
+    $old_logo_id = isset($current_logo_row['pdf_report_logo_attachment_id'])
+        ? (int) $current_logo_row['pdf_report_logo_attachment_id']
+        : 0;
+
+    $upload_res = null;
+    if ($send_pdf_report) {
+        $upload_res = sp_upload_survey_pdf_logo_file();
+        if (is_wp_error($upload_res)) {
+            wp_die(esc_html($upload_res->get_error_message()), 'Validation Error', ['back_link' => true]);
+        }
+    }
+
+    $new_logo_id = $old_logo_id;
+    if ($send_pdf_report && $upload_res !== null && (int) $upload_res > 0) {
+        if ($old_logo_id > 0 && $old_logo_id !== (int) $upload_res) {
+            wp_delete_attachment($old_logo_id, true);
+        }
+        $new_logo_id = (int) $upload_res;
+    } elseif ($send_pdf_report && !empty($_POST['sp_remove_pdf_report_logo'])) {
+        if ($old_logo_id > 0) {
+            wp_delete_attachment($old_logo_id, true);
+        }
+        $new_logo_id = 0;
+    }
+
+    $logo_for_db = $new_logo_id > 0 ? $new_logo_id : null;
+
+    $update_result = sp_update_survey_info_row(
+        $survey_id,
+        $survey_title,
+        $description,
+        $instructions,
+        $send_email_message,
+        $email_message,
+        $send_pdf_report,
+        $layout_result,
+        $logo_for_db
+    );
 
     if (is_wp_error($update_result)) {
         wp_die('Failed to update survey.');
@@ -360,7 +538,7 @@ function sp_handle_edit_survey() {
 
     sp_replace_survey_questions_from_post($survey_id);
 
-    wp_redirect(admin_url('admin.php?page=survey-pilot&updated=1'));
+    wp_redirect(admin_url('admin.php?page=survey-pilot-dashboard'));
     exit;
 }
 
@@ -409,14 +587,20 @@ function sp_handle_duplicate_survey() {
         );
     }
 
+    $dup_logo = isset($original['pdf_report_logo_attachment_id'])
+        ? (int) $original['pdf_report_logo_attachment_id']
+        : 0;
+    $dup_logo = $dup_logo > 0 ? $dup_logo : null;
+
     $new_survey_id = sp_add_survey_info_row(
         $new_title,
         $original['survey_description'],
         $original['instructions'],
-        isset($original['page_headers']) ? $original['page_headers'] : null,
         isset($original['send_email_message']) ? (int) $original['send_email_message'] : 0,
         isset($original['email_message']) ? $original['email_message'] : null,
-        isset($original['send_pdf_report']) ? (int) $original['send_pdf_report'] : 0
+        isset($original['send_pdf_report']) ? (int) $original['send_pdf_report'] : 0,
+        isset($original['survey_layout']) ? $original['survey_layout'] : null,
+        $dup_logo
     );
 
     if (is_wp_error($new_survey_id) || !$new_survey_id) {
@@ -439,13 +623,12 @@ function sp_handle_duplicate_survey() {
                 $question['question_order'],
                 $question['scale_min'],
                 $question['scale_max'],
-                $question['scale_labels'],
-                isset($question['page_number']) ? (int) $question['page_number'] : 1
+                $question['scale_labels']
             );
         }
     }
 
-    wp_redirect(admin_url('admin.php?page=survey-pilot&duplicated=1'));
+    wp_redirect(admin_url('admin.php?page=survey-pilot-dashboard'));
     exit;
 }
 
@@ -454,7 +637,7 @@ function sp_save_survey_questions_from_post($survey_id) {
         return;
     }
 
-    $questions = $_POST['sp_questions'];
+    $questions = sp_normalize_questions_post_array($_POST['sp_questions']);
     $order = 1;
 
     foreach ($questions as $question) {
@@ -464,7 +647,6 @@ function sp_save_survey_questions_from_post($survey_id) {
         }
 
         $scale_rows = isset($question['scale']) && is_array($question['scale']) ? $question['scale'] : [];
-        $page_number = isset($question['page']) ? max(1, intval($question['page'])) : 1;
 
         $values = [];
         $labels = [];
@@ -503,8 +685,7 @@ function sp_save_survey_questions_from_post($survey_id) {
             $order,
             $scale_min,
             $scale_max,
-            $scale_labels,
-            $page_number
+            $scale_labels
         );
 
         $order++;
@@ -524,7 +705,7 @@ function sp_replace_survey_questions_from_post($survey_id) {
     }
 
     $questions_table = $wpdb->prefix . 'survey_questions';
-    $questions = $_POST['sp_questions'];
+    $questions = sp_normalize_questions_post_array($_POST['sp_questions']);
     $order = 1;
     $submitted_ids = [];
 
@@ -536,7 +717,6 @@ function sp_replace_survey_questions_from_post($survey_id) {
         }
 
         $existing_id  = isset($question['id']) ? absint($question['id']) : 0;
-        $page_number  = isset($question['page']) ? max(1, intval($question['page'])) : 1;
         $scale_rows   = isset($question['scale']) && is_array($question['scale']) ? $question['scale'] : [];
 
         $values = [];
@@ -578,15 +758,15 @@ function sp_replace_survey_questions_from_post($survey_id) {
                 $wpdb->update(
                     $questions_table,
                     [
-                        'question_text'  => sanitize_textarea_field($question_text),
+                        // Store raw text; escape when rendering in admin/frontend.
+                        'question_text'  => $question_text,
                         'scale_min'      => $scale_min,
                         'scale_max'      => $scale_max,
                         'scale_labels'   => $scale_labels,
                         'question_order' => $order,
-                        'page_number'    => $page_number,
                     ],
                     ['id' => $existing_id],
-                    ['%s', '%d', '%d', '%s', '%d', '%d'],
+                    ['%s', '%d', '%d', '%s', '%d'],
                     ['%d']
                 );
                 $submitted_ids[] = $existing_id;
@@ -602,8 +782,7 @@ function sp_replace_survey_questions_from_post($survey_id) {
             $order,
             $scale_min,
             $scale_max,
-            $scale_labels,
-            $page_number
+            $scale_labels
         );
 
         if ($new_id && !is_wp_error($new_id)) {
@@ -633,6 +812,11 @@ add_action('admin_init', function() {
     if (!isset($_GET['action'], $_GET['id'])) return;
     $action = sanitize_text_field($_GET['action']);
     $survey_id = intval($_GET['id']);
+    
+    if (!current_user_can('manage_options')) {
+        wp_die('Insufficient permissions');
+    }
+
     global $wpdb;
 
     if ($action === 'delete') {
@@ -648,6 +832,23 @@ add_action('admin_init', function() {
         $survey_questions_table = $wpdb->prefix . 'survey_questions';
         $survey_response_info_table = $wpdb->prefix . 'survey_response_info';
         $survey_response_answers_table = $wpdb->prefix . 'survey_response_answers';
+
+        $pdf_logo_attachment_id = (int) $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT pdf_report_logo_attachment_id FROM {$survey_info_table} WHERE id = %d",
+                $survey_id
+            )
+        );
+        $other_surveys_share_logo = 0;
+        if ($pdf_logo_attachment_id > 0) {
+            $other_surveys_share_logo = (int) $wpdb->get_var(
+                $wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$survey_info_table} WHERE pdf_report_logo_attachment_id = %d AND id != %d",
+                    $pdf_logo_attachment_id,
+                    $survey_id
+                )
+            );
+        }
 
         // Delete answers associated with this survey's responses
         $wpdb->query(
@@ -668,7 +869,12 @@ add_action('admin_init', function() {
         // Finally delete the survey itself
         $wpdb->delete($survey_info_table, ['id' => $survey_id], ['%d']);
 
-        wp_redirect(admin_url('admin.php?page=survey-pilot&deleted=1'));
+        // Remove Media Library attachment only if no other survey still references it (e.g. duplicate shares one file).
+        if ($pdf_logo_attachment_id > 0 && $other_surveys_share_logo === 0) {
+            wp_delete_attachment($pdf_logo_attachment_id, true);
+        }
+
+        wp_redirect(admin_url('admin.php?page=survey-pilot-dashboard'));
         exit;
     }
-});
+}); 

@@ -35,11 +35,11 @@ add_filter('pre_update_option_sp_smtp_pass', function ($new_value, $old_value) {
 //This creates a menu item dropdown under Settings called Email Settings
 add_action('admin_menu', function () {
     add_submenu_page(
-        'survey-pilot',
+        'survey-pilot-dashboard',
         'Email Settings',
         'Email Settings',
         'manage_options',
-        'sp-email-settings',
+        'survey-pilot-email-settings',
         //This is the callback function that will render the email settings page when the menu item is clicked
         'sp_render_email_settings'
     );
@@ -81,7 +81,7 @@ function sp_render_email_settings() {
                         <tr class="sp-smtp-row"<?php if (!$is_smtp) echo ' style="display:none;"'; ?>>
                             <th><label for="sp_smtp_host">SMTP Host<span class="sp-required" aria-hidden="true">*</span></label></th>
                             <td>
-                                <input type="text" name="sp_smtp_host" id="sp_smtp_host" class="regular-text" value="<?php echo esc_attr(get_option('sp_smtp_host', 'smtp.gmail.com')); ?>">
+                                <input type="text" name="sp_smtp_host" id="sp_smtp_host" class="regular-text" maxlength="255" data-sp-maxlength="255" value="<?php echo esc_attr(get_option('sp_smtp_host', 'smtp.gmail.com')); ?>">
                                 <p id="sp-smtp-host-error" class="sp-field-error" style="display:none;">SMTP Host is required.</p>
                             </td>
                         </tr>
@@ -89,7 +89,7 @@ function sp_render_email_settings() {
                         <tr class="sp-smtp-row"<?php if (!$is_smtp) echo ' style="display:none;"'; ?>>
                             <th><label for="sp_smtp_port">SMTP Port<span class="sp-required" aria-hidden="true">*</span></label></th>
                             <td>
-                                <input type="number" name="sp_smtp_port" id="sp_smtp_port" class="small-text" value="<?php echo esc_attr(get_option('sp_smtp_port', 587)); ?>">
+                                <input type="number" name="sp_smtp_port" id="sp_smtp_port" class="small-text" data-sp-maxlength="5" value="<?php echo esc_attr(get_option('sp_smtp_port', 587)); ?>">
                                 <p id="sp-smtp-port-error" class="sp-field-error" style="display:none;">SMTP Port is required.</p>
                             </td>
                         </tr>
@@ -97,7 +97,7 @@ function sp_render_email_settings() {
                         <tr class="sp-smtp-row"<?php if (!$is_smtp) echo ' style="display:none;"'; ?>>
                             <th><label for="sp_smtp_user">Username<span class="sp-required" aria-hidden="true">*</span></label></th>
                             <td>
-                                <input type="text" name="sp_smtp_user" id="sp_smtp_user" class="regular-text" value="<?php echo esc_attr(get_option('sp_smtp_user')); ?>">
+                                <input type="text" name="sp_smtp_user" id="sp_smtp_user" class="regular-text" maxlength="254" data-sp-maxlength="254" value="<?php echo esc_attr(get_option('sp_smtp_user')); ?>">
                                 <p id="sp-smtp-user-error" class="sp-field-error" style="display:none;">Username is required.</p>
                             </td>
                         </tr>
@@ -114,7 +114,7 @@ function sp_render_email_settings() {
                                     $decrypted_pass = openssl_decrypt($stored_pass, 'AES-256-CBC', $key, 0, $iv);
                                 }
                                 ?>
-                                <input type="password" name="sp_smtp_pass" id="sp_smtp_pass" class="regular-text" value="<?php echo esc_attr($decrypted_pass); ?>">
+                                <input type="password" name="sp_smtp_pass" id="sp_smtp_pass" class="regular-text" maxlength="255" data-sp-maxlength="255" value="<?php echo esc_attr($decrypted_pass); ?>">
                                 <p id="sp-smtp-pass-error" class="sp-field-error" style="display:none;">Password is required.</p>
                             </td>
                         </tr>
@@ -136,7 +136,7 @@ function sp_render_email_settings() {
                         <tr>
                             <th class="sp-th-middle"><label for="sp_test_email_to">Recipient<span class="sp-required" aria-hidden="true">*</span></label></th>
                             <td>
-                                <input type="text" name="sp_test_email_to" id="sp_test_email_to" class="regular-text" placeholder="Enter email address...">
+                                <input type="text" name="sp_test_email_to" id="sp_test_email_to" class="regular-text" maxlength="254" data-sp-maxlength="254" placeholder="Enter email address...">
                                 <p id="sp-test-email-error" class="sp-field-error" style="display:none;">Please enter a valid email address.</p>
                             </td>
                         </tr>
