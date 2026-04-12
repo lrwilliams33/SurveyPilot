@@ -7,6 +7,7 @@
  * tables, deletes plugin options, and removes the generated-PDF directory under uploads.
  */
 
+ 
 if (!defined('WP_UNINSTALL_PLUGIN')) {
     exit;
 }
