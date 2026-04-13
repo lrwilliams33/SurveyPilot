@@ -1,10 +1,8 @@
 <?php
-// dashboard.php template
-
 global $wpdb;
 $surveys = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}survey_info ORDER BY updated_at DESC", ARRAY_A);
 
-// Build a map of survey_id => response count in one query.
+// Build a map of survey_id to response count
 $response_counts = [];
 $raw_counts = $wpdb->get_results(
     "SELECT survey_id, COUNT(*) AS cnt FROM {$wpdb->prefix}survey_response_info GROUP BY survey_id",
@@ -15,6 +13,7 @@ foreach ($raw_counts as $rc) {
 }
 ?>
 
+<!-- Dashboard -->
 <div class="wrap sp-dashboard">
     <div class="sp-dashboard-header">
         <h1>SurveyPilot Dashboard</h1>
@@ -23,7 +22,7 @@ foreach ($raw_counts as $rc) {
     <hr>
 
     <div class="sp-dashboard-content">
-        <!-- Left Column: Surveys -->
+        <!-- Left Column: Survey Cards -->
         <div class="sp-dashboard-left">
             <div class="sp-survey-list-header">
                 <span class="sp-survey-list-label">Your Surveys</span>
@@ -50,7 +49,7 @@ foreach ($raw_counts as $rc) {
                 <div class="sp-survey-list" style="visibility:hidden">
                     <?php foreach ($surveys as $survey) : ?>
                         <?php
-                        $edit_url      = admin_url('admin.php?page=survey-pilot-create-survey&action=edit&id=' . intval($survey['id']));
+                        $edit_url = admin_url('admin.php?page=survey-pilot-create-survey&action=edit&id=' . intval($survey['id']));
                         $duplicate_url = wp_nonce_url(
                             admin_url('admin-post.php?action=sp_duplicate_survey&survey_id=' . intval($survey['id'])),
                             'sp_duplicate_survey_' . intval($survey['id'])
@@ -126,7 +125,7 @@ foreach ($raw_counts as $rc) {
             <?php endif; ?>
         </div>
 
-        <!-- Right Column: Shortcode Help -->
+        <!-- Right Column: Shortcode Instructions -->
         <div class="sp-dashboard-right">
             <h2>How To Use SurveyPilot</h2>
             <p>To display a survey on a page or post, copy its shortcode from the survey card and paste it into the editor:</p>
@@ -137,6 +136,7 @@ foreach ($raw_counts as $rc) {
     </div>
 </div>
 
+<!-- Cannot Duplicate Survey Popup (duplicate name) -->
 <div id="sp-duplicate-blocked-modal" class="sp-modal" aria-hidden="true">
     <div class="sp-modal-overlay" tabindex="-1"></div>
     <div class="sp-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sp-dup-blocked-title" tabindex="-1">
@@ -148,6 +148,7 @@ foreach ($raw_counts as $rc) {
     </div>
 </div>
 
+<!-- Cannot Duplicate Survey Popup (title too long) -->
 <div id="sp-duplicate-title-too-long-modal" class="sp-modal" aria-hidden="true">
     <div class="sp-modal-overlay" tabindex="-1"></div>
     <div class="sp-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sp-dup-too-long-title" tabindex="-1">
@@ -159,6 +160,7 @@ foreach ($raw_counts as $rc) {
     </div>
 </div>
 
+<!-- Export Responses Popup -->
 <div id="sp-export-modal" class="sp-modal" aria-hidden="true">
     <div class="sp-modal-overlay" tabindex="-1"></div>
     <div class="sp-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sp-export-modal-title" tabindex="-1">
@@ -173,6 +175,7 @@ foreach ($raw_counts as $rc) {
     </div>
 </div>
 
+<!-- Delete Survey Popup -->
 <div id="sp-delete-modal" class="sp-modal" aria-hidden="true">
     <div class="sp-modal-overlay" tabindex="-1"></div>
     <div class="sp-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sp-delete-modal-title" tabindex="-1">
