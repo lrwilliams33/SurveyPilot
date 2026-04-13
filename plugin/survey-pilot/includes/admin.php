@@ -8,7 +8,7 @@ add_action('admin_menu', function() {
         'survey-pilot-dashboard',
         'sp_render_dashboard',
         'dashicons-forms',
-        6
+        30
     );
 
     // Override the auto-generated duplicate submenu entry with the "Dashboard" label.

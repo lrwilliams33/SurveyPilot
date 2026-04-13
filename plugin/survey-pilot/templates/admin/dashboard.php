@@ -148,6 +148,17 @@ foreach ($raw_counts as $rc) {
     </div>
 </div>
 
+<div id="sp-duplicate-title-too-long-modal" class="sp-modal" aria-hidden="true">
+    <div class="sp-modal-overlay" tabindex="-1"></div>
+    <div class="sp-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sp-dup-too-long-title" tabindex="-1">
+        <h2 id="sp-dup-too-long-title">Cannot Duplicate Survey</h2>
+        <p>The duplicated survey's name would exceed the maximum survey title length. Please shorten the survey title before duplicating.</p>
+        <div class="sp-modal-actions">
+            <a href="#" class="button sp-btn-large" id="sp-dup-too-long-ok">OK</a>
+        </div>
+    </div>
+</div>
+
 <div id="sp-export-modal" class="sp-modal" aria-hidden="true">
     <div class="sp-modal-overlay" tabindex="-1"></div>
     <div class="sp-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sp-export-modal-title" tabindex="-1">
@@ -165,7 +176,7 @@ foreach ($raw_counts as $rc) {
 <div id="sp-delete-modal" class="sp-modal" aria-hidden="true">
     <div class="sp-modal-overlay" tabindex="-1"></div>
     <div class="sp-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sp-delete-modal-title" tabindex="-1">
-        <h2 id="sp-delete-modal-title">Delete survey?</h2>
+        <h2 id="sp-delete-modal-title">Delete Survey?</h2>
         <p>This will permanently delete <strong id="sp-delete-survey-name"></strong> and any associated questions/responses. This cannot be undone.</p>
         <div class="sp-modal-actions">
             <a href="#" class="button sp-btn-large" data-sp-cancel>Cancel</a>

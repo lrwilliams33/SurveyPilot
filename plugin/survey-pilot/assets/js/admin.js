@@ -153,34 +153,64 @@
     });
   }
 
-  // Duplicate blocked modal
-  const dupBlockedModal   = document.getElementById("sp-duplicate-blocked-modal");
-  const dupBlockedOkBtn   = document.getElementById("sp-dup-blocked-ok");
-  const dupBlockedNameEl  = document.getElementById("sp-dup-blocked-name");
-  const dupBtns           = document.querySelectorAll(".sp-duplicate-btn");
+  // Duplicate blocked modal + title length (matches survey_info.title VARCHAR(255) and server suffix " (Copy)")
+  const dupBlockedModal    = document.getElementById("sp-duplicate-blocked-modal");
+  const dupTitleTooLongModal = document.getElementById("sp-duplicate-title-too-long-modal");
+  const dupBlockedOkBtn    = document.getElementById("sp-dup-blocked-ok");
+  const dupTooLongOkBtn    = document.getElementById("sp-dup-too-long-ok");
+  const dupBlockedNameEl   = document.getElementById("sp-dup-blocked-name");
+  const dupTooLongNameEl   = document.getElementById("sp-dup-too-long-name");
+  const dupBtns            = document.querySelectorAll(".sp-duplicate-btn");
+  const SP_SURVEY_TITLE_MAX_LEN = 255;
 
-  if (dupBlockedModal && dupBtns.length > 0) {
-    const dupOverlay = dupBlockedModal.querySelector(".sp-modal-overlay");
-    const dupDialog  = dupBlockedModal.querySelector(".sp-modal-dialog");
-    const titles     = (spAdmin.surveyTitles || []).map((t) => t.toLowerCase());
+  if (dupBtns.length > 0 && (dupBlockedModal || dupTitleTooLongModal)) {
+    const dupOverlayBlocked = dupBlockedModal?.querySelector(".sp-modal-overlay");
+    const dupDialogBlocked  = dupBlockedModal?.querySelector(".sp-modal-dialog");
+    const dupOverlayTooLong = dupTitleTooLongModal?.querySelector(".sp-modal-overlay");
+    const dupDialogTooLong  = dupTitleTooLongModal?.querySelector(".sp-modal-dialog");
+    const titles            = (spAdmin.surveyTitles || []).map((t) => t.toLowerCase());
 
     function openDupBlockedModal(copyTitle) {
+      if (!dupBlockedModal) return;
       if (dupBlockedNameEl) dupBlockedNameEl.textContent = copyTitle;
       dupBlockedModal.classList.add("is-open");
       dupBlockedModal.setAttribute("aria-hidden", "false");
-      dupDialog?.focus?.();
+      dupDialogBlocked?.focus?.();
     }
 
     function closeDupBlockedModal() {
+      if (!dupBlockedModal) return;
       dupBlockedModal.classList.remove("is-open");
       dupBlockedModal.setAttribute("aria-hidden", "true");
+    }
+
+    function openDupTitleTooLongModal(copyTitle) {
+      if (!dupTitleTooLongModal) return;
+      if (dupTooLongNameEl) dupTooLongNameEl.textContent = copyTitle;
+      dupTitleTooLongModal.classList.add("is-open");
+      dupTitleTooLongModal.setAttribute("aria-hidden", "false");
+      dupDialogTooLong?.focus?.();
+    }
+
+    function closeDupTitleTooLongModal() {
+      if (!dupTitleTooLongModal) return;
+      dupTitleTooLongModal.classList.remove("is-open");
+      dupTitleTooLongModal.setAttribute("aria-hidden", "true");
     }
 
     dupBtns.forEach((btn) => {
       btn.addEventListener("click", (e) => {
         const title     = btn.getAttribute("data-survey-title") || "";
         const copyTitle = title + " (Copy)";
-        if (titles.includes(copyTitle.toLowerCase())) {
+        if (copyTitle.length > SP_SURVEY_TITLE_MAX_LEN) {
+          if (dupTitleTooLongModal) {
+            e.preventDefault();
+            e.stopPropagation();
+            openDupTitleTooLongModal(copyTitle);
+          }
+          return;
+        }
+        if (dupBlockedModal && titles.includes(copyTitle.toLowerCase())) {
           e.preventDefault();
           e.stopPropagation();
           openDupBlockedModal(copyTitle);
@@ -188,14 +218,22 @@
       });
     });
 
-    dupOverlay?.addEventListener("click", closeDupBlockedModal);
+    dupOverlayBlocked?.addEventListener("click", closeDupBlockedModal);
     dupBlockedOkBtn?.addEventListener("click", (e) => {
       e.preventDefault();
       closeDupBlockedModal();
     });
 
+    dupOverlayTooLong?.addEventListener("click", closeDupTitleTooLongModal);
+    dupTooLongOkBtn?.addEventListener("click", (e) => {
+      e.preventDefault();
+      closeDupTitleTooLongModal();
+    });
+
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && dupBlockedModal.classList.contains("is-open")) closeDupBlockedModal();
+      if (e.key !== "Escape") return;
+      if (dupBlockedModal?.classList.contains("is-open")) closeDupBlockedModal();
+      if (dupTitleTooLongModal?.classList.contains("is-open")) closeDupTitleTooLongModal();
     });
   }
 

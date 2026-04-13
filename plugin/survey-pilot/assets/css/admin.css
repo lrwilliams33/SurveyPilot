@@ -39,6 +39,7 @@
     margin-top: 1px;
     margin-bottom: 16px;
     padding-right: 1px;
+    min-width: 0;
 }
 
 .sp-survey-list-label {
@@ -57,6 +58,8 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    min-width: 0;
+    flex-shrink: 1;
 }
 
 .sp-sort-wrapper {
@@ -185,7 +188,8 @@
 }
 
 .sp-survey-title:hover {
-    text-decoration: underline;
+    text-decoration: none;
+    border-bottom-color: currentColor;
 }
 
 .sp-survey-card.sp-nohover,
@@ -197,7 +201,13 @@
 
 .sp-survey-info {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
     min-width: 0; /* allows ellipsis to work in flex layout */
+    max-width: 100%;
+    overflow-wrap: normal;
+    word-break: normal;
     /* Clicks in “empty” gaps between title / description / shortcode row hit the card beneath. */
     pointer-events: none;
 }
@@ -209,21 +219,25 @@
 .sp-survey-title {
     font-size: 26px;
     font-weight: 700;
-    display: block;
-    width: 100%;
-    max-width: min(100%, 96%);
+    display: inline-block;
+    max-width: 100%;
+    box-sizing: border-box;
     min-width: 0;
+    vertical-align: top;
     color: #1d2327;
     line-height: 1;
-    padding-bottom: 4px;
+    padding-bottom: 2px;
+    border-bottom: 2px solid transparent;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    overflow-wrap: normal;
+    word-break: normal;
 }
 
 .sp-survey-response-count {
     display: block;
-    width: fit-content;
+    width: auto;
     max-width: 100%;
     font-size: 14px;
     font-weight: 500;
@@ -232,6 +246,8 @@
     margin-top: 2px;
     white-space: normal;
     cursor: text;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
 }
 
 .sp-survey-response-count-sep {
@@ -252,10 +268,10 @@
 }
 
 .sp-survey-desc {
-    display: block;
-    width: 100%;
-    max-width: min(100%, 95%);
+    display: inline-block;
+    max-width: 100%;
     min-width: 0;
+    vertical-align: top;
     color: #5f6368;
     font-size: 18px;
     line-height: 1.35;
@@ -265,41 +281,43 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    overflow-wrap: normal;
+    word-break: normal;
 }
 
 .sp-survey-shortcode-box {
     display: flex;
     align-items: center;
-    flex: 1 1 0;
+    flex: 0 1 auto;
     min-width: 0;
-    max-width: min(100%, 78%);
+    max-width: 100%;
+    box-sizing: border-box;
     padding: 6px 8px;
     margin-right: 14px;
     background: #f0f0f1;
     border: 1px solid #dcdcde;
     border-radius: 4px;
-    box-sizing: border-box;
-    /* Padding / flex gaps: default arrow (not I-beam from code); copy button keeps pointer. */
+    overflow: hidden;
+    /* Shrinks on row 3 so response/edit line stays on same row; width follows shortcode when short. */
     cursor: default;
 }
 
 /* Inner row; code truncates with ellipsis; copy stays fixed width. */
-.sp-survey-shortcode-inline {
+.sp-survey-shortcode-box > .sp-survey-shortcode-inline {
     display: flex;
     align-items: center;
     gap: 6px;
     min-width: 0;
-    flex: 1;
-    width: 100%;
+    max-width: 100%;
+    flex: 1 1 0%;
     box-sizing: border-box;
 }
 
 .sp-survey-shortcode-display {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
-    column-gap: 0;
-    row-gap: 6px;
+    align-self: stretch;
     margin-top: 6px;
     margin-bottom: 4px;
     line-height: 1.35;
@@ -307,15 +325,17 @@
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
-    /* Full-width row: only the gray shortcode well uses default cursor, not empty space to the right. */
+    overflow: hidden;
+    /* Row 3: shortcode (shrinks + ellipsis) and response/edit status always on one line. */
     cursor: inherit;
 }
 
 .sp-survey-shortcode-display .sp-survey-response-count {
     margin-top: 0;
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     min-width: 0;
     max-width: 100%;
+    white-space: nowrap;
 }
 
 .sp-survey-shortcode-box code {
@@ -331,9 +351,12 @@
     line-height: 1.35;
     flex: 1 1 0;
     min-width: 0;
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: normal;
 }
 
 /* Fixed size; shorter than width with vertical margin so it sits visually centered vs code. */
@@ -423,7 +446,7 @@
 .sp-survey-card-toolbar {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0;
     flex-shrink: 0;
 }
 
@@ -519,11 +542,12 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
 }
 
 .sp-survey-actions .button {
-    margin-left: 5px;
+    margin-left: 0;
 }
 
 .sp-survey-actions {
     position: relative;
+    margin-left: 16px;
 }
 
 .sp-survey-menu-toggle {
@@ -1239,6 +1263,8 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     left: 50%;
     transform: translate(-50%, -50%);
     width: min(560px, calc(100% - 40px));
+    min-width: 0;
+    box-sizing: border-box;
     background: #fff;
     border-radius: 8px;
     padding: 18px 18px 16px;
@@ -1250,12 +1276,21 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
 .sp-modal-dialog h2 {
     margin-top: 16px;
     font-size: 26px;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
 }
 
 .sp-modal-dialog p {
     font-size: 18px;
     line-height: 1.5;
     margin: 8px 0 0;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+}
+
+.sp-modal-dialog strong {
+    overflow-wrap: break-word;
+    word-wrap: break-word;
 }
 
 .sp-modal-actions {
