@@ -4,7 +4,6 @@
 }
 
 .sp-dashboard {
-    overflow-x: hidden;
     max-width: 100%;
     box-sizing: border-box;
 }
@@ -83,7 +82,6 @@
     color: #1d2327;
     cursor: pointer;
 }
-
 
 .sp-admin-page .wrap {
     margin-top: 0;
@@ -172,11 +170,9 @@
     transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     min-width: 0;
     max-width: 100%;
-    /* Don’t use overflow: hidden — it clips the options dropdown past the card edge. */
     box-sizing: border-box;
 }
 
-/* Open menu stacks above the next card so it isn’t covered when it extends downward. */
 .sp-survey-card:has(.sp-survey-menu.is-open) {
     z-index: 40;
 }
@@ -204,11 +200,10 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    min-width: 0; /* allows ellipsis to work in flex layout */
+    min-width: 0;
     max-width: 100%;
     overflow-wrap: normal;
     word-break: normal;
-    /* Clicks in “empty” gaps between title / description / shortcode row hit the card beneath. */
     pointer-events: none;
 }
 
@@ -298,11 +293,9 @@
     border: 1px solid #dcdcde;
     border-radius: 4px;
     overflow: hidden;
-    /* Shrinks on row 3 so response/edit line stays on same row; width follows shortcode when short. */
     cursor: default;
 }
 
-/* Inner row; code truncates with ellipsis; copy stays fixed width. */
 .sp-survey-shortcode-box > .sp-survey-shortcode-inline {
     display: flex;
     align-items: center;
@@ -326,7 +319,6 @@
     min-width: 0;
     box-sizing: border-box;
     overflow: hidden;
-    /* Row 3: shortcode (shrinks + ellipsis) and response/edit status always on one line. */
     cursor: inherit;
 }
 
@@ -359,7 +351,6 @@
     word-break: normal;
 }
 
-/* Fixed size; shorter than width with vertical margin so it sits visually centered vs code. */
 .sp-survey-shortcode-box .sp-copy-btn {
     box-sizing: border-box;
     flex-shrink: 0;
@@ -499,7 +490,6 @@
     box-shadow: 0 0 0 1px #fff, 0 0 0 3px #2271b1, 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
-/* WP core (.wp-core-ui .button…) can set not-allowed on disabled; use normal arrow for unclickable reorder. */
 .wp-core-ui button.button-link.sp-survey-move-btn:disabled,
 .wp-core-ui button.button-link.sp-survey-move-btn[disabled],
 .wp-core-ui button.button-link.sp-survey-move-btn:disabled:hover,
@@ -525,7 +515,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     background: #f5f5f5;
 }
 
-/* When the paired enabled arrow is active, drop disabled chrome so a gray box doesn’t sit under the hover/focus ring. */
 .sp-survey-reorder-actions:has(.sp-survey-move-btn:hover:not(:disabled)) button.sp-survey-move-btn:disabled,
 .sp-survey-reorder-actions:has(.sp-survey-move-btn:hover:not(:disabled)) button.sp-survey-move-btn[disabled],
 .sp-survey-reorder-actions:has(.sp-survey-move-btn:focus:not(:disabled)) button.sp-survey-move-btn:disabled,
@@ -699,17 +688,15 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
 
 .sp-dashboard-content {
     display: flex;
-    gap: 30px; /* space between left and right */
+    gap: 30px;
     min-width: 0;
     max-width: 100%;
 }
 
-/* Left column takes most space */
 .sp-dashboard-left {
     flex: 3;
     min-width: 0;
     max-width: 100%;
-    overflow-x: hidden;
 }
 
 .sp-dashboard .sp-dashboard-left h2 {
@@ -788,7 +775,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     margin: 14px 0;
 }
 
-/* Right column is sidebar */
 .sp-dashboard-right {
     flex: 1;
     align-self: flex-start;
@@ -999,7 +985,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     color: #2271b1;
 }
 
-/* Question & text: hover chip matches WP admin page background; arrow images unchanged */
 .sp-question-card .sp-move-btn:hover:not(:disabled),
 .sp-text-card .sp-move-btn:hover:not(:disabled),
 .sp-question-card .sp-move-btn:focus:not(:disabled),
@@ -1015,7 +1000,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     filter: none;
 }
 
-/* Match #sp-add-page-break:disabled — grayed out, no forbidden cursor (pointer passes through) */
 .sp-move-btn:disabled {
     opacity: 0.38;
     cursor: default;
@@ -1241,7 +1225,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     margin-left: 0;
 }
 
-
 .sp-modal {
     display: none;
 }
@@ -1415,7 +1398,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     cursor: pointer;
 }
 
-/* PDF logo: only the visible “Choose file” button opens the picker; filename text is not clickable. */
 .sp-pdf-logo-file-row {
     position: relative;
     display: flex;
@@ -1439,7 +1421,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     pointer-events: none;
 }
 
-/* Same size as .sp-admin-page .description (“Optional…”) */
 .sp-pdf-logo-filename {
     font-size: 15px;
     color: #646970;
@@ -1448,10 +1429,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     pointer-events: none;
 }
 
-/*
- * PDF logo actions + Likert “Add Option”: same gray secondary background as WP .button-secondary,
- * same font metrics (15px) as Optional hint / filename.
- */
 .sp-admin-page .sp-btn-filelike {
     box-sizing: border-box;
     font-family: inherit;
@@ -1498,7 +1475,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     margin-left: 34px;
 }
 
-/* Extra space before “PDF report logo” (email → message gap stays on first row only) */
 .sp-email-options-row--pdf {
     margin-top: 0;
     margin-bottom: 28px;
@@ -1524,7 +1500,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     box-sizing: border-box;
 }
 
-/* Same visual weight as other email rows (those use <label> and pick up .sp-admin-page label { font-size: 18px }). */
 .sp-pdf-logo-row .sp-email-option-label.sp-pdf-logo-label {
     font-size: 18px;
     font-weight: 600;

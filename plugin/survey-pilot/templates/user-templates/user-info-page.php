@@ -3,7 +3,7 @@ if (!defined('ABSPATH')) exit;
 
 sp_unlock_survey_step($sp_survey_id);
 ?>
-<link rel="stylesheet" href="<?php echo esc_url(SP_URL . 'templates/user-templates/styles.css'); ?>">
+<link rel="stylesheet" href="<?php echo esc_url(SP_URL . 'assets/css/user.css'); ?>">
 <?php
 
 global $wpdb;
