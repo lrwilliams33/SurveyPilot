@@ -1,46 +1,32 @@
 <?php
 /*
 Plugin Name: SurveyPilot
-Description: Custom survey builder plugin.
+Description: Plugin for building, publishing, and managing Likert scale surveys. Optional email notifications and PDF reports provide clear summaries of participant responses and comparisons across respondents.
 Version: 1.0
 Author: Jack McKee, Landon Williams, Terry Lu
+License: GPLv2 or later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
+Text Domain: survey-pilot
 */
 
 if (!defined('ABSPATH')) {
     exit;
 }
 
-
+// Filesystem and URL roots used across plugin code
 define('SP_PATH', plugin_dir_path(__FILE__));
 define('SP_URL', plugin_dir_url(__FILE__));
 
-//makes Dompdf available for PDF generation
+// Make domPDF available for PDF generation
 if (file_exists(__DIR__ . '/vendor/autoload.php')) {
     require_once __DIR__ . '/vendor/autoload.php';
 }
 
 require_once SP_PATH . 'includes/database.php';
 require_once SP_PATH . 'includes/survey-layout.php';
-register_activation_hook(__FILE__, 'add_tables');
 
-// Run DB migrations on admin load when schema version changes.
-add_action('admin_init', function () {
-    $v = get_option('sp_db_version', '');
-    if ($v === '1.9') {
-        return;
-    }
-    if ($v !== '1.8') {
-        if (function_exists('sp_run_survey_pilot_db_upgrade_to_18')) {
-            sp_run_survey_pilot_db_upgrade_to_18();
-        } else {
-            add_tables();
-        }
-    }
-    if (function_exists('sp_run_survey_pilot_db_upgrade_to_19')) {
-        sp_run_survey_pilot_db_upgrade_to_19();
-    }
-    update_option('sp_db_version', '1.9');
-}, 5);
+// Create database tables when plugin is activated
+register_activation_hook(__FILE__, 'add_tables');
 
 require_once SP_PATH . 'includes/admin.php';
 require_once SP_PATH . 'includes/admin-pages.php';
