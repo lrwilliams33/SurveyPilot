@@ -1,12 +1,5 @@
-# WordPress core & local install
+# WordPress local installation
 wp/
 
 # Docker volumes
 db_data/
-
-# OS junk
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log

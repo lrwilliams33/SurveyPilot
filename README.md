@@ -1,87 +1,50 @@
 # SurveyPilot
-Custom Wordpress Plugin for the Creation and Management of Surveys. Automatic scoring and email of results.
 
-Email Setup Steps:
+SurveyPilot is a WordPress plugin for **building, publishing, and managing Likert scale surveys**. Optional **email notifications** and **PDF reports** provide clear summaries of participant responses and comparisons across respondents.
 
-SurveyPilot sends an email to the user after they submit a survey. Email delivery is handled through the WP Mail SMTP plugin using Gmail SMTP.
+---
 
-Each developer must configure their own Gmail account to send emails during local development.
+## How It Works
 
------Step 1-----
+- **Survey Builder** — Create and edit surveys with a **title, description, instructions, and ordered questions**. Each question uses a **numeric scale** (configurable min/max) with optional **per-point labels**.
+- **Layout & Paging** — Arrange content into pages with **optional page headers**. Mix **text blocks** and **questions** in a visual layout.
+- **Publishing** — Embed a survey into any WordPress page or post with a **shortcode**; participants step through **start → survey pages → submission**.
+- **Responses** — Submissions are tied to the **logged-in WordPress user**. Answers are stored for **reporting and exporting**.
+- **Edit Protection** — After responses exist for a survey, its structure is **partially locked** to protect data integrity.
+- **Optional Email & PDF** — Per survey, you can send a **custom email message** after submission and attach a **PDF report**. An optional **uploadable logo** can appear on the PDF.
+- **CSV Export** — Download all responses for a survey in **CSV format** from the dashboard.
+- **Email Delivery Settings** — Configure **WordPress Mail** or **SMTP** and send a **test email** from SurveyPilot’s email settings screen to ensure email delivery is set up correctly.
 
-Install and activate the WP Mail SMTP plugin in WordPress, should be the first option when you search up SMTP when adding plugins. 
+---
 
-In the WordPress admin dashboard, navigate to Plugins.
-Click Add New Plugin.
-Search for WP Mail SMTP.
-Install the plugin and click Activate.
+## Installation
 
------Step 2-----
+1. Copy the `plugin/survey-pilot` folder into `wp-content/plugins/`.
+2. In **Plugins → Installed Plugins**, activate **SurveyPilot**.
+3. On activation, the plugin creates the required database tables (`dbDelta`).
 
-Generate a Google App Password for Gmail, make sure you have a Gmail account.
+**Uninstall:** Deleting the plugin via **Plugins → Delete** runs `uninstall.php`, which removes SurveyPilot’s database tables, plugin options, temporarily generated PDF files, and uploaded PDF logos.
 
-Visit the following link after ensuring that Two Step Verification is enabled on your Google account.
+---
 
-https://myaccount.google.com/apppasswords
+## Local Development (Docker)
 
-Follow the instructions to generate a sixteen character app password.
+This repository includes a **`docker-compose.yml`** that:
 
-When the password is generated, copy it and remove any spaces.
+- Runs **WordPress** (on port `8000`) with the plugin mounted from `./plugin/survey-pilot`.
+- Runs **MySQL** with a named volume for data.
+- Runs **phpMyAdmin** (on port `8080`).
 
------Step 3-----
+A **`wp/`** directory is expected for the WordPress core files volume (see compose file). Adjust ports and credentials for your machine. Do not use default passwords in production.
 
-Configure WP Mail SMTP in WordPress.
+---
 
-Open the WP Mail SMTP settings page in the WordPress admin dashboard.
+## License
 
-Choose the Other SMTP mailer option.
+SurveyPilot is licensed under the **GNU General Public License v2.0 or later (GPLv2+)**. See the **`LICENSE`** file in the repository root for the full GPLv2 text and a short copyright notice.
 
-Enter the following configuration values:
+---
 
-SMTP Host
-smtp.gmail.com
+## Authors
 
-Encryption
-TLS
-
-SMTP Port
-587
-
-Authentication
-Enabled
-
-SMTP Username
-Your Gmail address
-
-SMTP Password
-Paste the Google App Password generated in Step 2
-
-From Name
-SurveyPilot
-
-From Email
-Your Gmail address
-
-Enable Force From Email if available.
-
-Save the settings.
-
------Step 4-----
-
-Restart the Docker containers.
-
-docker compose down
-docker compose up -d
-
-Restarting ensures the latest configuration is loaded.
-
------Step 5-----
-
-Test email delivery.
-
-Open a survey page on the site.
-Complete and submit the survey while logged in as a WordPress user.
-
-SurveyPilot will automatically send a survey report to the email address associated with the logged in WordPress user account.
-
-If the configuration is correct, the email should appear in your Gmail inbox shortly after submitting the survey.
+SurveyPilot: **Jack McKee**, **Landon Williams**, **Terry Lu**
