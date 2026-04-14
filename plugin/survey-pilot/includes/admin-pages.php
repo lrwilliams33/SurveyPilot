@@ -1,9 +1,15 @@
 <?php
 
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+// Render admin dashboard
 function sp_render_dashboard() {
     include SP_PATH . 'templates/admin-templates/dashboard.php';
 }
 
+// Render create survey screen (or edit survey screen)
 function sp_render_create_survey_page() {
     global $wpdb;
 
@@ -13,6 +19,7 @@ function sp_render_create_survey_page() {
 
     $sp_survey_response_count = 0;
 
+    // If edit survey screen is requested
     if (isset($_GET['action'], $_GET['id']) && $_GET['action'] === 'edit') {
         $survey_id = intval($_GET['id']);
 

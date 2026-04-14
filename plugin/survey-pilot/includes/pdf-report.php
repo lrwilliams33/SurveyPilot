@@ -3,12 +3,6 @@
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
-/**
- * Scale a JPEG/PNG on disk to fit inside a bounding box (aspect ratio preserved, no upscaling).
- * Returns base64 body and mime for embedding in the PDF, or null on failure.
- *
- * @return array{data: string, mime: string, width: int, height: int}|null
- */
 function sp_pdf_logo_to_bounded_base64($file_path, $max_width = 120, $max_height = 80) {
     $max_width  = max(1, (int) $max_width);
     $max_height = max(1, (int) $max_height);
@@ -88,7 +82,7 @@ function sp_pdf_logo_to_bounded_base64($file_path, $max_width = 120, $max_height
     ];
 }
 
-//generate PDF Report and perform score aggregation and percentile calculations for the report
+// Generate a PDF report for a survey submission, including summary statistics and detailed responses
 function sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_means, $individual_results, $pdf_logo_attachment_id = null) {
 
     if (!class_exists('Dompdf\Dompdf')) {
@@ -103,7 +97,7 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_m
     $current_user = wp_get_current_user();
     $name = $current_user->display_name ? $current_user->display_name : 'Anonymous';
 
-    //group by category/page number
+    // Group answered questions by survey page (category)
     $categories = [];
 
     foreach ($results as $row) {
@@ -175,7 +169,6 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_m
         $total = max(count($page_results), 0);
 
         // Percentile defined as (# values below x / total values) * 100
-        // Matches standard textbook definition
         $percentile = $total > 0
             ? ($below / $total) * 100
             : null;
@@ -214,7 +207,7 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_m
 
     $header_class = $has_logo ? 'header header--with-logo' : 'header';
 
-    //create html for the pdf 
+    // Build HTML of PDF
     $html = '
     <html>
     <head>
@@ -396,7 +389,7 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_m
     <body>
     ';
 
-    // PDF header (logo only if a custom image is configured and readable)
+    // PDF header (logo only present if custom image is uploaded)
     $html .= '<div class="' . esc_attr($header_class) . '">';
     if ($has_logo) {
         $lw = (int) $logo_width;
@@ -482,7 +475,7 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_m
 
         $html .= '<div class="bar-wrapper">';
 
-        //user bar
+        // User's response bar
         $html .= '<div style="font-size:10px; margin-bottom:2px;">You</div>';
         $html .= '<div class="bar-track">';
         $html .= '<div class="bar-user" style="
@@ -498,7 +491,7 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_m
 
         $html .= '<div style="height:10px;"></div>';
 
-        //average bar
+        // Average bar
         $html .= '<div style="font-size:10px; margin-bottom:2px;">Average</div>';
         $html .= '<div class="bar-track">';
          $html .= '<div class="bar-mean" style="
@@ -516,7 +509,7 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_m
         $html .= '</div>';
     }
 
-    //iterate through categories and display question/answer pairs 
+    // Render question/answer details grouped by page (category)
     $html .= '<h2>Detailed Responses</h2>';
 
     foreach ($categories as $page => $data) {
@@ -550,12 +543,11 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_m
 
     $html .= '</body></html>';
 
-    //generate pdf using dompdf
     $dompdf->loadHtml($html);
     $dompdf->setPaper('A4', 'portrait');
     $dompdf->render();
 
-    //send the generated PDF to the uploads directory and return the file path for email attachment
+    // Save generated PDF into uploads temporarily so it can be attached to email message
     $upload_dir = wp_upload_dir();
 
     if (!empty($upload_dir['error'])) {

@@ -1,5 +1,6 @@
 <?php
 
+// Register SurveyPilot admin menu pages
 add_action('admin_menu', function() {
     add_menu_page(
         'SurveyPilot',
@@ -11,7 +12,7 @@ add_action('admin_menu', function() {
         30
     );
 
-    // Override the auto-generated duplicate submenu entry with the "Dashboard" label.
+    // Primary submenu is called "Dashboard"
     add_submenu_page(
         'survey-pilot-dashboard',
         'Dashboard',
@@ -21,7 +22,7 @@ add_action('admin_menu', function() {
         'sp_render_dashboard'
     );
 
-    // Hidden page — accessible via Edit/Create buttons, not the sidebar.
+    // Create survey page is hidden from admin menu sidebar (it is accessible via Create/Edit buttons)
     add_submenu_page(
         null,
         'Create Survey',
@@ -32,6 +33,8 @@ add_action('admin_menu', function() {
     );
 });
 
+
+// Load admin assets on SurveyPilot pages
 add_action('admin_enqueue_scripts', function() {
     $page = isset($_GET['page']) ? sanitize_key($_GET['page']) : '';
     if (!in_array($page, ['survey-pilot-dashboard', 'survey-pilot-create-survey', 'survey-pilot-email-settings'], true)) {
@@ -67,7 +70,7 @@ add_action('admin_enqueue_scripts', function() {
     ]);
 });
 
-// Handle sort order save via AJAX
+// Custom survey sort order save
 add_action('wp_ajax_sp_save_survey_order', 'sp_handle_save_survey_order');
 
 function sp_handle_save_survey_order() {
@@ -87,10 +90,8 @@ function sp_handle_save_survey_order() {
         return;
     }
 
-    // Fetch current updated_at values so reordering doesn't touch them.
     $placeholders   = implode(',', array_fill(0, count($survey_ids), '%d'));
     $existing_rows  = $wpdb->get_results(
-        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $wpdb->prepare(
             "SELECT id, updated_at FROM {$wpdb->prefix}survey_info WHERE id IN ($placeholders)",
             ...$survey_ids
@@ -120,7 +121,7 @@ function sp_handle_save_survey_order() {
     wp_send_json_success();
 }
 
-// Handle CSV export via AJAX
+// Survey responses CSV export
 add_action('wp_ajax_sp_export_survey_csv', 'sp_handle_export_survey_csv');
 
 function sp_handle_export_survey_csv() {
@@ -146,7 +147,6 @@ function sp_handle_export_survey_csv() {
         wp_send_json_error('Survey not found');
     }
 
-    // Questions ordered as they appear in the survey.
     $questions = $wpdb->get_results(
         $wpdb->prepare(
             "SELECT id, question_text, question_order, scale_min, scale_max
@@ -158,7 +158,6 @@ function sp_handle_export_survey_csv() {
         ARRAY_A
     );
 
-    // All responses + answers in one query.
     $raw = $wpdb->get_results(
         $wpdb->prepare(
             "SELECT ri.id AS response_id, ri.user_id, ri.submitted_at,
@@ -172,7 +171,6 @@ function sp_handle_export_survey_csv() {
         ARRAY_A
     );
 
-    // Group answers by response.
     $responses = [];
     foreach ($raw as $r) {
         $rid = (int) $r['response_id'];
@@ -188,7 +186,6 @@ function sp_handle_export_survey_csv() {
         }
     }
 
-    // Build CSV rows.
     $rows   = [];
     $header = ['Response ID', 'User ID', 'Submitted At'];
     foreach ($questions as $q) {
@@ -215,7 +212,6 @@ function sp_handle_export_survey_csv() {
         $rows[] = $row;
     }
 
-    // Serialize to CSV string.
     $csv = '';
     foreach ($rows as $row) {
         $cells = array_map(function ( $cell ) {
@@ -237,11 +233,7 @@ function sp_handle_export_survey_csv() {
     ]);
 }
 
-/**
- * Upload a .jpg / .jpeg / .png for the PDF report header. Uses WordPress upload + attachment APIs.
- *
- * @return int|null|WP_Error Attachment ID, null if no file submitted, WP_Error on failure.
- */
+// Logo uploading functionality for PDF report (.jpg, .jpeg, or .png)
 function sp_upload_survey_pdf_logo_file() {
     if (empty($_FILES['sp_pdf_report_logo']) || !is_array($_FILES['sp_pdf_report_logo'])) {
         return null;
@@ -333,11 +325,11 @@ function sp_upload_survey_pdf_logo_file() {
     return (int) $attach_id;
 }
 
-// Handle Create / Edit / Duplicate Survey Submission
 add_action('admin_post_sp_create_survey', 'sp_handle_create_survey');
 add_action('admin_post_sp_edit_survey', 'sp_handle_edit_survey');
 add_action('admin_post_sp_duplicate_survey', 'sp_handle_duplicate_survey');
 
+// Create a survey from admin input
 function sp_handle_create_survey() {
     if (!current_user_can('manage_options')) {
         wp_die('Insufficient permissions');
@@ -348,7 +340,6 @@ function sp_handle_create_survey() {
         wp_die('Security check failed');
     }
 
-    // Make sure the function exists
     if (!function_exists('sp_add_survey_info_row')) {
         wp_die('Survey creation function is missing.');
     }
@@ -360,8 +351,6 @@ function sp_handle_create_survey() {
         wp_die('A survey must have at least one question.', 'Validation Error', ['back_link' => true]);
     }
 
-    // Create the survey
-    // Store raw text (no HTML execution) and rely on escaping on output.
     $survey_title = isset($_POST['sp_survey_title']) ? trim((string) wp_unslash($_POST['sp_survey_title'])) : '';
     $description  = isset($_POST['sp_survey_description']) ? trim((string) wp_unslash($_POST['sp_survey_description'])) : null;
     $instructions = isset($_POST['sp_survey_instructions']) ? trim((string) wp_unslash($_POST['sp_survey_instructions'])) : null;
@@ -426,6 +415,7 @@ function sp_handle_create_survey() {
     exit;
 }
 
+// Edit survey from admin input
 function sp_handle_edit_survey() {
     if (!current_user_can('manage_options')) {
         wp_die('Insufficient permissions');
@@ -505,6 +495,7 @@ function sp_handle_edit_survey() {
         }
     }
 
+    // Keep current logo by default
     $new_logo_id = $old_logo_id;
     if ($send_pdf_report && $upload_res !== null && (int) $upload_res > 0) {
         if ($old_logo_id > 0 && $old_logo_id !== (int) $upload_res) {
@@ -542,6 +533,7 @@ function sp_handle_edit_survey() {
     exit;
 }
 
+// Duplicate an existing survey and all of its elements (questions, text boxes, page breaks, etc.)
 function sp_handle_duplicate_survey() {
     if (!current_user_can('manage_options')) {
         wp_die('Insufficient permissions');
@@ -672,7 +664,7 @@ function sp_save_survey_questions_from_post($survey_id) {
             $scale_max = 5;
         }
 
-        // Store every scale value from min to max, with empty string for missing labels.
+        // Store every scale value from min to max, use empty string for missing labels
         $labels_complete = [];
         for ($v = $scale_min; $v <= $scale_max; $v++) {
             $labels_complete[$v] = isset($labels[$v]) ? $labels[$v] : '';
@@ -746,7 +738,6 @@ function sp_replace_survey_questions_from_post($survey_id) {
         $scale_labels = wp_json_encode($labels_complete);
 
         if ($existing_id > 0) {
-            // Verify this question actually belongs to this survey before updating.
             $owner = $wpdb->get_var(
                 $wpdb->prepare(
                     "SELECT survey_id FROM $questions_table WHERE id = %d LIMIT 1",
@@ -758,7 +749,6 @@ function sp_replace_survey_questions_from_post($survey_id) {
                 $wpdb->update(
                     $questions_table,
                     [
-                        // Store raw text; escape when rendering in admin/frontend.
                         'question_text'  => $question_text,
                         'scale_min'      => $scale_min,
                         'scale_max'      => $scale_max,
@@ -775,7 +765,6 @@ function sp_replace_survey_questions_from_post($survey_id) {
             }
         }
 
-        // No valid existing ID — insert as new question.
         $new_id = sp_add_survey_question_row(
             $survey_id,
             $question_text,
@@ -792,7 +781,6 @@ function sp_replace_survey_questions_from_post($survey_id) {
         $order++;
     }
 
-    // Delete questions that were removed in the editor (not in the submitted list).
     if (!empty($submitted_ids)) {
         $placeholders = implode(',', array_fill(0, count($submitted_ids), '%d'));
         $wpdb->query(
@@ -802,12 +790,11 @@ function sp_replace_survey_questions_from_post($survey_id) {
             )
         );
     } else {
-        // All questions were removed.
         $wpdb->delete($questions_table, ['survey_id' => $survey_id], ['%d']);
     }
 }
 
-// Handle Delete Action
+// Delete a survey (all its elements, responses, and PDF logo)
 add_action('admin_init', function() {
     if (!isset($_GET['action'], $_GET['id'])) return;
     $action = sanitize_text_field($_GET['action']);
@@ -850,7 +837,6 @@ add_action('admin_init', function() {
             );
         }
 
-        // Delete answers associated with this survey's responses
         $wpdb->query(
             $wpdb->prepare(
                 "DELETE a FROM $survey_response_answers_table a
@@ -860,16 +846,13 @@ add_action('admin_init', function() {
             )
         );
 
-        // Delete response info rows
         $wpdb->delete($survey_response_info_table, ['survey_id' => $survey_id], ['%d']);
 
-        // Delete questions for this survey
         $wpdb->delete($survey_questions_table, ['survey_id' => $survey_id], ['%d']);
 
-        // Finally delete the survey itself
         $wpdb->delete($survey_info_table, ['id' => $survey_id], ['%d']);
 
-        // Remove Media Library attachment only if no other survey still references it (e.g. duplicate shares one file).
+        // Remove logo from Media Library only if no other survey uses it
         if ($pdf_logo_attachment_id > 0 && $other_surveys_share_logo === 0) {
             wp_delete_attachment($pdf_logo_attachment_id, true);
         }
@@ -877,4 +860,4 @@ add_action('admin_init', function() {
         wp_redirect(admin_url('admin.php?page=survey-pilot-dashboard'));
         exit;
     }
-}); 
+});

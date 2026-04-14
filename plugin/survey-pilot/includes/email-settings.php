@@ -1,15 +1,11 @@
 <?php
-if (!defined('ABSPATH')) exit;
 
-//This file ensures that if user selects SMTP, the wp_mail function will create a PHPMailer instance with SMTP settings instead of PHP mail()
+if (!defined('ABSPATH')) {
+    exit;
+}
 
-//basic flow is wp_mail called, filters are applied, then phpmailer_init is triggered, then email is sent
-
-// Register settings
+// Email settings fields saved in wp_options table
 add_action('admin_init', function () {
-  //Upon activation, create a settings group called sp_email_settings
-  // register the following settings: sp_email_mode, sp_smtp_host, sp_smtp_port, sp_smtp_user, sp_smtp_pass
-  //These values are stored in the wp_options table and can be retrieved using get_option('option_name')
     register_setting('sp_email_settings', 'sp_email_mode');
     register_setting('sp_email_settings', 'sp_smtp_host');
     register_setting('sp_email_settings', 'sp_smtp_port');
@@ -19,12 +15,9 @@ add_action('admin_init', function () {
     ]);
 });
 
-// Encrypt the password exactly once, right before it is written to the database.
-// pre_update_option fires once per update_option() call — unlike sanitize_callback,
-// which WordPress can call twice due to a known double-sanitize behaviour.
+// Encrypt SMTP password before it gets stored in the database
 add_filter('pre_update_option_sp_smtp_pass', function ($new_value, $old_value) {
     if (empty($new_value)) {
-        // Return the old value unchanged so WordPress sees no diff and skips the write.
         return $old_value;
     }
     $key = AUTH_KEY;
@@ -32,7 +25,7 @@ add_filter('pre_update_option_sp_smtp_pass', function ($new_value, $old_value) {
     return openssl_encrypt($new_value, 'AES-256-CBC', $key, 0, $iv);
 }, 10, 2);
 
-//This creates a menu item dropdown under Settings called Email Settings
+// Add Email Settings submenu under SurveyPilot
 add_action('admin_menu', function () {
     add_submenu_page(
         'survey-pilot-dashboard',
@@ -40,15 +33,11 @@ add_action('admin_menu', function () {
         'Email Settings',
         'manage_options',
         'survey-pilot-email-settings',
-        //This is the callback function that will render the email settings page when the menu item is clicked
         'sp_render_email_settings'
     );
 });
 
-
-//This function will render the email settings page
-//Called by the add_submenu_page function above
-//options.php will save settings to wp_options table upon form submission
+// Render Email Settings admin page
 function sp_render_email_settings() {
     ?>
     <div class="wrap sp-dashboard sp-admin-page sp-email-page">
@@ -59,7 +48,7 @@ function sp_render_email_settings() {
         <hr>
 
         <div class="sp-dashboard-content">
-            <!-- Left Column: Settings Forms -->
+            <!-- Settings Forms -->
             <div class="sp-dashboard-left">
                 <h2>Email Configuration</h2>
 
@@ -146,7 +135,7 @@ function sp_render_email_settings() {
                 </div>
             </div>
 
-            <!-- Right Column: Instructions -->
+            <!-- Email Settings Guide -->
             <div class="sp-dashboard-right">
                 <h2>Email Settings Guide</h2>
 
@@ -184,15 +173,15 @@ function sp_render_email_settings() {
     <?php
 }
 
-//handles sending emails by configuring PHPMailer to use SMTP settings if the email mode is set to SMTP in the options page
+// Configure PHPMailer for when SMTP mode is enabled
 add_action('phpmailer_init', function ($phpmailer) {
-    // Only configure PHPMailer for SMTP mode, if not in SMTP mode, wp_mail will use the default PHP mail() function by returning early from this function and not modifying the PHPMailer instance
+    // If using wp_mail (default mode), leave PHPMailer untouched
     if (get_option('sp_email_mode') !== 'smtp') {
         return;
     }
-    //everytime wp_mail is called either by test email or other emails and the mode is SMTP, this function will run and set PHPMailer to use SMTP with the settings from the options page
+
+    // Apply SMTP credentials from email settings fields
     $phpmailer->isSMTP();
-    //get settings options from the database and set PHPMailer properties accordingly
     $phpmailer->Host = get_option('sp_smtp_host');
     $phpmailer->Port = get_option('sp_smtp_port', 587);
     $phpmailer->SMTPAuth = true;
@@ -207,8 +196,6 @@ add_action('phpmailer_init', function ($phpmailer) {
     $phpmailer->FromName = get_bloginfo('name');
 });
 
-
-//These filters set the default From email and name for all emails sent by wp_mail, but can be overridden by PHPMailer settings if SMTP mode is enabled. This ensures that even in default mode, emails are sent with a consistent From address and name.
 add_filter('wp_mail_from', function () {
     return get_option('admin_email');
 });
@@ -217,8 +204,7 @@ add_filter('wp_mail_from_name', function () {
     return get_bloginfo('name');
 });
 
-
-//This function handles test email sending via AJAX
+// Send a test email from the Email Settings screen
 add_action('wp_ajax_sp_send_test_email', function () {
     check_ajax_referer('sp_send_test_email', 'nonce');
 

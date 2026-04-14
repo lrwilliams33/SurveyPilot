@@ -1,12 +1,6 @@
 <?php
-// includes/frontend.php
 
-/**
- * Shortcode: [survey_pilot name="My Survey"] to display a survey by its title.
- * The name attribute is required so the correct survey is shown on the page.
- * For step navigation the resolved id is passed via sp_survey_id in the URL.
- */
-
+// Start a user session if not already started
 function sp_ensure_session_started() {
     if (session_status() === PHP_SESSION_NONE) {
         if (!headers_sent()) {
@@ -21,10 +15,12 @@ function sp_ensure_session_started() {
 add_action('plugins_loaded', 'sp_ensure_session_started', 1);
 add_action('init', 'sp_ensure_session_started', 1);
 
+// Build session key used to track user's step/page state
 function sp_get_flow_session_key($survey_id) {
     return 'sp_survey_flow_' . absint($survey_id);
 }
 
+// Get the first page of a survey
 function sp_get_first_survey_page($survey_id) {
     global $wpdb;
 
@@ -66,6 +62,7 @@ function sp_get_first_survey_page($survey_id) {
     return (int) reset($all_page_numbers);
 }
 
+// Get the last page of a survey
 function sp_get_last_survey_page($survey_id) {
     global $wpdb;
 
@@ -185,7 +182,6 @@ function sp_validate_requested_flow($survey_id, $requested_step, $requested_page
     $allowed_page = (int) $flow['allowed_page'];
     $completed    = !empty($flow['completed']);
 
-    // Once completed, only confirmation and explicit start (retake) are allowed.
     if ($completed && in_array($requested_step, ['info', 'survey'], true)) {
         return [
             'allowed' => false,
@@ -264,6 +260,7 @@ function sp_validate_requested_flow($survey_id, $requested_step, $requested_page
     ];
 }
 
+// Get the IDs of the questions for a specified page number
 function sp_get_question_ids_for_page($survey_id, $page_number) {
     global $wpdb;
 
@@ -311,6 +308,7 @@ function sp_get_question_ids_for_page($survey_id, $page_number) {
     return $question_ids;
 }
 
+// Render the survey shortcode and route user to the proper survey step
 function sp_render_survey($atts) {
     global $wpdb;
 
@@ -318,13 +316,9 @@ function sp_render_survey($atts) {
     $step = isset($_GET['sp_step']) ? sanitize_text_field($_GET['sp_step']) : 'start';
     $valid_steps = ['start', 'info', 'survey', 'confirmation'];
 
-    // Resolve survey ID: name attribute → DB lookup; fallback to id attr or GET param.
     $sp_survey_id = 0;
 
     if (!empty($atts['name'])) {
-        // Store titles as raw text; do a trimmed lookup here and
-        // rely on prepared statements and escaped output elsewhere
-        // to prevent XSS while allowing characters like < and >.
         $survey_title = trim((string) wp_unslash($atts['name']));
         $row = $wpdb->get_row(
             $wpdb->prepare(
@@ -423,11 +417,8 @@ function sp_render_survey($atts) {
     return ob_get_clean();
 }
 
-// Register the shortcode
 add_shortcode('survey_pilot', 'sp_render_survey');
 
-//add wordpress hook, when we submit to admin-post.php with action sp_submit_survey, it will call the function sp_handle_submit_survey
-//we are submitting to admin-post.php in user-survey-page.php, so we need to handle the form submission in this function
 add_action('admin_post_sp_submit_survey', 'sp_handle_submit_survey');
 
 add_action('wp_mail_failed', function ($wp_error) {
@@ -436,13 +427,12 @@ add_action('wp_mail_failed', function ($wp_error) {
     error_log('SP: error data=' . print_r($wp_error->get_error_data(), true));
 });
 
+// Validate and save survey submission
 function sp_handle_submit_survey() {
     error_log('Submission handling started');
-    //check to make sure the nonce token is valid, no attacker is submitting the form
     if (!isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'sp_submit_survey')) {
         wp_die('Security check failed');
     }
-    //get the survey ID and answers from the form submission
     $survey_id = isset($_POST['sp_survey_id']) ? absint($_POST['sp_survey_id']) : 0;
     $answers = isset($_POST['sp_answers']) ? (array) $_POST['sp_answers'] : [];
     $navigation_action = isset($_POST['sp_navigation_action'])
@@ -462,8 +452,6 @@ function sp_handle_submit_survey() {
         wp_die('Invalid survey ID');
     }
 
-    // Merge session-stored answers with form submission answers (previous pages + this POST).
-    // Use array_replace, not array_merge: array_merge reindexes numeric keys and destroys question IDs.
     $session_key = 'sp_survey_answers_' . $survey_id;
     if (isset($_SESSION[$session_key]) && is_array($_SESSION[$session_key])) {
         $answers = array_replace($_SESSION[$session_key], $answers);
@@ -558,7 +546,6 @@ function sp_handle_submit_survey() {
         exit;
     }
 
-    // Server-side completeness check to prevent skipping questions (e.g., via URL sp_page tampering).
     global $wpdb;
     $questions_table = $wpdb->prefix . 'survey_questions';
 
@@ -580,10 +567,8 @@ function sp_handle_submit_survey() {
         exit;
     }
 
-    // Ensure every expected question has an answer.
     $expected_ids = array_map('intval', $expected_ids);
     $expected_id_lookup = array_fill_keys($expected_ids, true);
-    // Ignore stale or invalid question IDs that are not part of this survey.
     $clean_answers = array_intersect_key($clean_answers, $expected_id_lookup);
     $answered_ids = array_map('intval', array_keys($clean_answers));
     $missing_ids  = array_diff($expected_ids, $answered_ids);
@@ -663,7 +648,6 @@ function sp_handle_submit_survey() {
     }
 
     $user_id = get_current_user_id();
-    //post the survey responses to the respective database tables
     $response_id = sp_save_survey_submission($survey_id, $clean_answers, $user_id);
 
     if (is_wp_error($response_id)) {
@@ -678,12 +662,10 @@ function sp_handle_submit_survey() {
         exit;
     }
 
-    //send the survey response email to the user
     sp_send_survey_email($response_id, $survey_id, $user_id);
 
     sp_mark_survey_complete($survey_id);
 
-    //after saving the survey response and sending the email, redirect the user to the confirmation page
     $redirect = $return_url;
 
     // Clear session data for this survey
@@ -698,12 +680,11 @@ function sp_handle_submit_survey() {
 exit;
 }
 
-//send email to the user function
+// Send email message (and PDF report) if enabled
 function sp_send_survey_email($response_id, $survey_id, $user_id) {
     global $wpdb;
     error_log('Email function started');
 
-    //use get_userdata to access wp_users table and fetch email of user id
     $user = get_userdata($user_id);
 
     if (!$user) {
@@ -723,7 +704,7 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
         )
     );
 
-    // If email messaging is turned off for this survey, do nothing.
+    // If email messaging is turned off for this survey, exit
     if (!$survey || empty((int) $survey->send_email_message)) {
         return;
     }
@@ -737,8 +718,6 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
 
     $survey_title = $survey->title ? $survey->title : 'Survey';
 
-    //get questions and answers for the submitted survey response
-    //join the answers and questions table and fetch information using the response id 
     $results = $wpdb->get_results(
         $wpdb->prepare(
             "SELECT q.id AS question_id, q.question_text, q.scale_labels, a.answer_value
@@ -833,8 +812,7 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
         }
     }
 
-
-    // Build email body from the admin-defined message.
+    // Build email message from the admin-defined message
     $message = wpautop(esc_html($email_message));
 
     $subject = 'Your Survey Submission: ' . $survey_title;
@@ -871,7 +849,7 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
     $sent = wp_mail($user_email, $subject, $message, $headers, $attachments);
     error_log('SP: wp_mail sent: ' . ($sent ? 'true' : 'false'));
 
-    //since we uploaded files into wordpress for PDF attachements, we delete these files after sending them in the email
+    // Clean up temporarily generated PDF files after sending
     if (!empty($attachments)) {
         foreach ($attachments as $file) {
             if (file_exists($file)) {
@@ -881,12 +859,8 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
     }
 }
 
-/**
- * AJAX handler to save individual survey answers to session
- * Called via AJAX when each radio button is selected
- */
+// Save in-progress response to user's session storage
 function sp_save_answer_ajax() {
-    // Verify nonce for security (only for authenticated users)
     if (is_user_logged_in()) {
         if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'sp_submit_survey')) {
             error_log('SP AJAX: Nonce verification failed for logged-in user');
@@ -894,7 +868,6 @@ function sp_save_answer_ajax() {
         }
     }
 
-    // Get and validate parameters
     $survey_id = isset($_POST['survey_id']) ? absint($_POST['survey_id']) : 0;
     $question_id = isset($_POST['question_id']) ? absint($_POST['question_id']) : 0;
     $answer_value = isset($_POST['answer_value']) ? absint($_POST['answer_value']) : 0;
@@ -905,13 +878,11 @@ function sp_save_answer_ajax() {
         wp_send_json_error('Invalid parameters');
     }
 
-    // Initialize session storage array if it doesn't exist
     $session_key = 'sp_survey_answers_' . $survey_id;
     if (!isset($_SESSION[$session_key])) {
         $_SESSION[$session_key] = [];
     }
 
-    // Save the answer to session
     $_SESSION[$session_key][$question_id] = $answer_value;
 
     error_log('SP AJAX: Answer saved. Session data: ' . print_r($_SESSION[$session_key], true));
@@ -919,6 +890,5 @@ function sp_save_answer_ajax() {
     wp_send_json_success('Answer saved');
 }
 
-// Register AJAX action for both logged in and logged out users
 add_action('wp_ajax_sp_save_answer', 'sp_save_answer_ajax');
 add_action('wp_ajax_nopriv_sp_save_answer', 'sp_save_answer_ajax');
