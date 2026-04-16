@@ -254,7 +254,7 @@ foreach ($questions as $idx => $q_row) {
             <?php if ($current_page < $total_pages) : ?>
                 <button type="submit" class="sp-button sp-next-btn">Next</button>
             <?php else : ?>
-                <button type="submit" class="sp-button sp-submit-btn">Submit Survey</button>
+                <button type="submit" class="sp-button sp-submit-btn">Submit</button>
             <?php endif; ?>
         </div>
     </form>

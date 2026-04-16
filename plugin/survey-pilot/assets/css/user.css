@@ -129,6 +129,8 @@
 }
 
 .sp-button {
+    -webkit-appearance: none;
+    appearance: none;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -142,6 +144,7 @@
     border-radius: 6px;
     cursor: pointer;
     text-decoration: none !important;
+    font-family: inherit;
     line-height: 1.4;
     white-space: nowrap;
     margin-top: 4px;
@@ -214,12 +217,21 @@
     margin: 0;
 }
 
-.sp-navigation .sp-prev-btn,
-.sp-navigation .sp-next-btn {
-    width: 140px;
-    max-width: 100%;
+.sp-navigation > .sp-button {
+    flex: 0 0 168px !important;
+    width: 168px !important;
+    min-width: 168px !important;
+    max-width: 168px !important;
     text-align: center;
     box-sizing: border-box;
+}
+
+.sp-navigation > .sp-prev-btn,
+.sp-navigation > .sp-submit-btn {
+    flex: 0 0 168px !important;
+    width: 168px !important;
+    min-width: 168px !important;
+    max-width: 168px !important;
 }
 
 .sp-form-group {
@@ -509,5 +521,7 @@
 
     .sp-navigation .sp-button {
         width: 100%;
+        min-width: 0;
+        max-width: none;
     }
 }
