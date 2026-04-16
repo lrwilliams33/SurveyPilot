@@ -248,11 +248,11 @@ foreach ($questions as $idx => $q_row) {
                     get_permalink()
                 ));
             ?>
-                <button type="button" class="sp-button sp-button-secondary sp-prev-btn" data-href="<?php echo $prev_url; ?>">← Previous</button>
+                <button type="button" class="sp-button sp-button-secondary sp-prev-btn" data-href="<?php echo $prev_url; ?>">Previous</button>
             <?php endif; ?>
 
             <?php if ($current_page < $total_pages) : ?>
-                <button type="submit" class="sp-button sp-next-btn">Next →</button>
+                <button type="submit" class="sp-button sp-next-btn">Next</button>
             <?php else : ?>
                 <button type="submit" class="sp-button sp-submit-btn">Submit Survey</button>
             <?php endif; ?>

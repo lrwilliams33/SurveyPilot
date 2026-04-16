@@ -129,7 +129,10 @@
 }
 
 .sp-button {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
     background: #2271b1;
     color: #fff !important;
     font-size: 15px;
@@ -140,6 +143,7 @@
     cursor: pointer;
     text-decoration: none !important;
     line-height: 1.4;
+    white-space: nowrap;
     margin-top: 4px;
     box-shadow: 0 1px 4px rgba(34, 113, 177, 0.25);
     transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
