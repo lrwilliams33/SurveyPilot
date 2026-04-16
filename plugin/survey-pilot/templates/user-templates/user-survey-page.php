@@ -28,6 +28,27 @@ if (!defined('ABSPATH')) exit;
         justify-content: flex-end;
         gap: 8px;
     }
+    .sp-q-number {
+        display: inline-block;
+        min-width: 2.3em;
+        padding: 0.1em 0.45em;
+        border-radius: 999px;
+        background: #eef2f7;
+        color: #1f2937;
+        font-weight: 700;
+        text-align: center;
+        line-height: 1.35;
+        flex: 0 0 auto;
+    }
+    td.sp-q-col {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.65em;
+    }
+    .sp-q-text {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
 </style>
 <?php
 
@@ -193,7 +214,7 @@ foreach ($questions as $idx => $q_row) {
                     $disp_num    = $question_numbers_by_id[ $question_id ] ?? 0;
                     ?>
                     <tr>
-                        <td class="sp-q-col"><?php echo (int) $disp_num; ?>. <?php echo esc_html($q['question_text']); ?></td>
+                        <td class="sp-q-col"><span class="sp-q-number"><?php echo (int) $disp_num; ?>.</span><span class="sp-q-text"><?php echo esc_html($q['question_text']); ?></span></td>
                         <?php for ($i = $scale_min; $i <= $scale_max; $i++) : ?>
                             <td class="sp-radio-cell">
                                 <input
