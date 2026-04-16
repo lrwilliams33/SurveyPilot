@@ -1,3 +1,5 @@
+// JavaScript for SurveyPilot admin screen
+
 (() => {
   function initHardCharacterMax() {
     document.querySelectorAll("[data-sp-maxlength]").forEach((el) => {
@@ -24,7 +26,7 @@
     });
   }
 
-  // Export modal
+  // Dashboard CSV export flow
   const exportModal      = document.getElementById("sp-export-modal");
   const exportBtns       = document.querySelectorAll("[data-sp-export-survey-id]");
 
@@ -153,34 +155,64 @@
     });
   }
 
-  // Duplicate blocked modal
-  const dupBlockedModal   = document.getElementById("sp-duplicate-blocked-modal");
-  const dupBlockedOkBtn   = document.getElementById("sp-dup-blocked-ok");
-  const dupBlockedNameEl  = document.getElementById("sp-dup-blocked-name");
-  const dupBtns           = document.querySelectorAll(".sp-duplicate-btn");
+  // Duplicate survey flows (existing copy title and max-char title limit)
+  const dupBlockedModal    = document.getElementById("sp-duplicate-blocked-modal");
+  const dupTitleTooLongModal = document.getElementById("sp-duplicate-title-too-long-modal");
+  const dupBlockedOkBtn    = document.getElementById("sp-dup-blocked-ok");
+  const dupTooLongOkBtn    = document.getElementById("sp-dup-too-long-ok");
+  const dupBlockedNameEl   = document.getElementById("sp-dup-blocked-name");
+  const dupTooLongNameEl   = document.getElementById("sp-dup-too-long-name");
+  const dupBtns            = document.querySelectorAll(".sp-duplicate-btn");
+  const SP_SURVEY_TITLE_MAX_LEN = 255;
 
-  if (dupBlockedModal && dupBtns.length > 0) {
-    const dupOverlay = dupBlockedModal.querySelector(".sp-modal-overlay");
-    const dupDialog  = dupBlockedModal.querySelector(".sp-modal-dialog");
-    const titles     = (spAdmin.surveyTitles || []).map((t) => t.toLowerCase());
+  if (dupBtns.length > 0 && (dupBlockedModal || dupTitleTooLongModal)) {
+    const dupOverlayBlocked = dupBlockedModal?.querySelector(".sp-modal-overlay");
+    const dupDialogBlocked  = dupBlockedModal?.querySelector(".sp-modal-dialog");
+    const dupOverlayTooLong = dupTitleTooLongModal?.querySelector(".sp-modal-overlay");
+    const dupDialogTooLong  = dupTitleTooLongModal?.querySelector(".sp-modal-dialog");
+    const titles            = (spAdmin.surveyTitles || []).map((t) => t.toLowerCase());
 
     function openDupBlockedModal(copyTitle) {
+      if (!dupBlockedModal) return;
       if (dupBlockedNameEl) dupBlockedNameEl.textContent = copyTitle;
       dupBlockedModal.classList.add("is-open");
       dupBlockedModal.setAttribute("aria-hidden", "false");
-      dupDialog?.focus?.();
+      dupDialogBlocked?.focus?.();
     }
 
     function closeDupBlockedModal() {
+      if (!dupBlockedModal) return;
       dupBlockedModal.classList.remove("is-open");
       dupBlockedModal.setAttribute("aria-hidden", "true");
+    }
+
+    function openDupTitleTooLongModal(copyTitle) {
+      if (!dupTitleTooLongModal) return;
+      if (dupTooLongNameEl) dupTooLongNameEl.textContent = copyTitle;
+      dupTitleTooLongModal.classList.add("is-open");
+      dupTitleTooLongModal.setAttribute("aria-hidden", "false");
+      dupDialogTooLong?.focus?.();
+    }
+
+    function closeDupTitleTooLongModal() {
+      if (!dupTitleTooLongModal) return;
+      dupTitleTooLongModal.classList.remove("is-open");
+      dupTitleTooLongModal.setAttribute("aria-hidden", "true");
     }
 
     dupBtns.forEach((btn) => {
       btn.addEventListener("click", (e) => {
         const title     = btn.getAttribute("data-survey-title") || "";
         const copyTitle = title + " (Copy)";
-        if (titles.includes(copyTitle.toLowerCase())) {
+        if (copyTitle.length > SP_SURVEY_TITLE_MAX_LEN) {
+          if (dupTitleTooLongModal) {
+            e.preventDefault();
+            e.stopPropagation();
+            openDupTitleTooLongModal(copyTitle);
+          }
+          return;
+        }
+        if (dupBlockedModal && titles.includes(copyTitle.toLowerCase())) {
           e.preventDefault();
           e.stopPropagation();
           openDupBlockedModal(copyTitle);
@@ -188,18 +220,26 @@
       });
     });
 
-    dupOverlay?.addEventListener("click", closeDupBlockedModal);
+    dupOverlayBlocked?.addEventListener("click", closeDupBlockedModal);
     dupBlockedOkBtn?.addEventListener("click", (e) => {
       e.preventDefault();
       closeDupBlockedModal();
     });
 
+    dupOverlayTooLong?.addEventListener("click", closeDupTitleTooLongModal);
+    dupTooLongOkBtn?.addEventListener("click", (e) => {
+      e.preventDefault();
+      closeDupTitleTooLongModal();
+    });
+
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && dupBlockedModal.classList.contains("is-open")) closeDupBlockedModal();
+      if (e.key !== "Escape") return;
+      if (dupBlockedModal?.classList.contains("is-open")) closeDupBlockedModal();
+      if (dupTitleTooLongModal?.classList.contains("is-open")) closeDupTitleTooLongModal();
     });
   }
 
-  // Delete confirmation modal
+  // Dashboard delete confirmation flow
   const openButtons = document.querySelectorAll("[data-sp-delete-url]");
   const modal = document.getElementById("sp-delete-modal");
 
@@ -252,7 +292,7 @@
     });
   }
 
-  // Make entire survey cards clickable on the dashboard (except buttons/links)
+  // Make entire dashboard cards clickable (takes you to edit survey page)
   function initDashboardCards() {
     const cards = document.querySelectorAll(".sp-survey-card[data-edit-url]");
     if (!cards.length) return;
@@ -362,7 +402,6 @@
     });
   }
 
-  // Auto-expanding textareas
   function initAutoExpand(scope) {
     const textareas =
       scope instanceof NodeList || Array.isArray(scope)
@@ -380,7 +419,7 @@
     });
   }
 
-  // Question builder for create/edit survey page
+  // Create and edit survey builder
   function initQuestionBuilder() {
     const builder = document.getElementById("sp-question-builder");
     if (!builder) return;
@@ -557,7 +596,6 @@
       });
       refreshPageNumbers();
       updateAddPageBreakBtn();
-      // Hide the "at least one question" error once a question exists
       if (cards.length > 0) {
         const questionsError = document.getElementById("sp-questions-error");
         if (questionsError) questionsError.style.display = "none";
@@ -744,6 +782,7 @@
       const lastChild = questionsList.lastElementChild;
       if (!lastChild || lastChild.classList.contains("sp-page-break")) return;
 
+      // Page break element
       const pb = document.createElement("div");
       pb.className = "sp-page-break";
       pb.innerHTML = `
@@ -878,6 +917,7 @@
       });
     }
 
+    // Scale rows for Likert scale
     function setScaleRowsFromLabelSetup(card, questionIndex, labelSetup) {
       const scaleContainer = card.querySelector(".sp-scale-rows");
       if (!scaleContainer || !labelSetup.length) return;
@@ -939,7 +979,6 @@
       addQuestion();
     });
 
-    // Existing questions and page breaks rendered by PHP
     questionsList.querySelectorAll(".sp-question-card").forEach((card) => {
       if (!card.getAttribute("data-question-index")) {
         card.setAttribute("data-question-index", String(nextIndex++));
@@ -958,7 +997,7 @@
     initAutoExpand(questionsList.querySelectorAll(".sp-auto-expand"));
     refreshQuestionNumbers();
 
-    // Require at least one question before the form can be submitted.
+    // Require at least one question before survey can be created/updated
     const form = builder.closest("form");
     const questionsError   = document.getElementById("sp-questions-error");
     const titleInput       = document.getElementById("sp_survey_title");
@@ -996,7 +1035,6 @@
     }
 
     if (titleInput && titleError) {
-      // Any change invalidates the previous verification result.
       titleInput.addEventListener("input", () => {
         titleIsVerified = false;
         if (titleInput.value.trim()) {
@@ -1022,7 +1060,7 @@
       });
     }
 
-    // --- Email messaging checkbox toggle ---
+    // Email messaging and PDF report toggles
     const emailMessagingCheckbox = document.getElementById("sp_email_messaging");
     const emailMessageRow        = document.getElementById("sp-email-message-row");
     const emailMessageTextarea   = document.getElementById("sp_email_message");
@@ -1058,7 +1096,7 @@
 
     syncPdfLogoVisibility();
 
-    // PDF logo: show local preview as soon as a file is chosen (before save).
+    // Show PDF logo preview right when a file is chosen
     const pdfLogoFileInput = document.getElementById("sp_pdf_report_logo");
     const pdfLogoPreviewLive = document.getElementById("sp-pdf-logo-preview-live");
     const pdfLogoPreviewLiveImg = document.getElementById("sp-pdf-logo-preview-live-img");
@@ -1108,7 +1146,7 @@
       return /\.(jpe?g|png)$/.test(name);
     }
 
-    /** Last good local file so Cancel in the file picker does not clear the selection. */
+    // Keep the last valid file so file explorer cancel does not clear previous file
     let spPdfLogoLastValidFile = null;
 
     function spPdfLogoRestoreFileInput(file) {
@@ -1175,7 +1213,6 @@
       });
     }
 
-    /** Clear pending file only (create / new selection); do not remove saved attachment on save. */
     if (pdfLogoRemoveLiveBtn && pdfLogoFileInput) {
       pdfLogoRemoveLiveBtn.addEventListener("click", () => {
         spPdfLogoLastValidFile = null;
@@ -1198,7 +1235,6 @@
       });
     }
 
-    /** Mark saved logo for removal on save (edit only). */
     if (pdfLogoRemoveSavedBtn && pdfLogoRemoveHidden && pdfLogoFileInput) {
       pdfLogoRemoveSavedBtn.addEventListener("click", () => {
         spPdfLogoLastValidFile = null;
@@ -1232,7 +1268,6 @@
 
         const titleVal = titleInput?.value.trim() ?? "";
 
-        // --- Synchronous checks (no async needed) ---
         let syncBlocked = false;
 
         if (!titleVal) {
@@ -1435,6 +1470,7 @@
     });
   }
 
+  // Email settings page (SMTP fields and test email)
   function initEmailSettings() {
     const modeSelect   = document.getElementById("sp_email_mode");
     const configForm   = document.getElementById("sp-email-config-form");

@@ -1,18 +1,11 @@
 <?php
-/**
- * Survey linear layout (questions, text, page breaks, page headers) shared by admin and frontend.
- */
+
+// Linear survey layout includes questions, text boxes, and page breaks
 
 if (!defined('ABSPATH')) {
     exit;
 }
 
-/**
- * Keep only valid numeric indices from sp_questions (drops template keys like "__INDEX__").
- *
- * @param array|null $questions_post
- * @return array<int, mixed>
- */
 function sp_normalize_questions_post_array($questions_post) {
     if (!is_array($questions_post)) {
         return [];
@@ -31,10 +24,7 @@ function sp_normalize_questions_post_array($questions_post) {
     return $out;
 }
 
-/**
- * @param array<int, mixed> $legacy_ph page number => header text (may be empty)
- * @return array<int, array<string, mixed>>
- */
+// Header for page 1 will always be present
 function sp_layout_prepend_page1_header_block_if_missing(array $blocks, array $legacy_ph) {
     if (empty($blocks)) {
         return $blocks;
@@ -55,13 +45,6 @@ function sp_layout_prepend_page1_header_block_if_missing(array $blocks, array $l
     return $blocks;
 }
 
-/**
- * Fill missing page_break.header (and page_header.header) from legacy page_headers JSON.
- *
- * @param array<int, array<string, mixed>> $blocks
- * @param array<int, string>             $legacy_ph
- * @return array<int, array<string, mixed>>
- */
 function sp_enrich_layout_page_break_headers_from_legacy(array $blocks, array $legacy_ph) {
     $page_num = 1;
     $out      = [];
@@ -87,12 +70,7 @@ function sp_enrich_layout_page_break_headers_from_legacy(array $blocks, array $l
     return $out;
 }
 
-/**
- * Build page number => header map from layout blocks (empty strings allowed).
- *
- * @param array<int, array<string, mixed>> $blocks
- * @return array<int, string>
- */
+// Build page number to page header map from page breaks present in layout (empty strings allowed)
 function sp_page_headers_map_from_layout_blocks(array $blocks) {
     $headers = [1 => ''];
     $page    = 1;
@@ -110,11 +88,7 @@ function sp_page_headers_map_from_layout_blocks(array $blocks) {
     return $headers;
 }
 
-/**
- * Highest page index implied by walking page_break markers (minimum 1).
- *
- * @param array<int, array<string, mixed>> $blocks
- */
+// Maximum page number
 function sp_layout_max_page_from_blocks(array $blocks) {
     $p = 1;
     foreach ($blocks as $b) {
@@ -125,12 +99,7 @@ function sp_layout_max_page_from_blocks(array $blocks) {
     return $p;
 }
 
-/**
- * Page number for each question block in layout order (same order as questions ordered by question_order, id).
- *
- * @param array<int, array<string, mixed>> $blocks
- * @return array<int, int> 0-based question index => page (1-based)
- */
+// Get page number for each question
 function sp_question_pages_list_from_layout(array $blocks) {
     $list = [];
     $page = 1;
@@ -145,13 +114,6 @@ function sp_question_pages_list_from_layout(array $blocks) {
     return $list;
 }
 
-/**
- * Normalized layout blocks for the public survey (same rules as admin save).
- *
- * @param array<int, array<string, mixed>> $questions_ordered DB rows ORDER BY question_order, id
- * @param string|null                      $layout_json
- * @return array<int, array<string, mixed>>
- */
 function sp_user_normalized_survey_layout_blocks(array $questions_ordered, $layout_json) {
     $blocks = [];
     if ($layout_json !== null && $layout_json !== '') {
@@ -179,24 +141,11 @@ function sp_user_normalized_survey_layout_blocks(array $questions_ordered, $layo
     return $blocks;
 }
 
-/**
- * Scale signature for grouping questions into one matrix table (must match between rows).
- *
- * @param array<string, mixed> $q
- */
 function sp_user_question_scale_key(array $q) {
     return $q['scale_min'] . '|' . $q['scale_max'] . '|' . ($q['scale_labels'] ?? '');
 }
 
-/**
- * Ordered segments for one survey page: standalone text blocks and question tables.
- * A text block always breaks the table; adjacent questions with different scales use separate tables.
- *
- * @param int                              $page_num          1-based
- * @param array<int, array<string, mixed>> $questions_ordered DB rows ORDER BY question_order, id
- * @param string|null                      $layout_json
- * @return array<int, array<string, mixed>> Each element is either question_table (questions[]) or text (content)
- */
+// Ordered elements for a survey page (questions and text boxes)
 function sp_user_page_render_segments($page_num, array $questions_ordered, $layout_json) {
     $page_num = max(1, (int) $page_num);
     $blocks   = sp_user_normalized_survey_layout_blocks($questions_ordered, $layout_json);
@@ -274,14 +223,7 @@ function sp_user_page_render_segments($page_num, array $questions_ordered, $layo
     return $segments;
 }
 
-/**
- * Resolve grouped questions, per-page header text, and page indices for the public survey UI.
- * Question rows need not include page_number; it is derived from survey_layout.
- *
- * @param array<int, array<string, mixed>> $questions_ordered DB rows ORDER BY question_order, id
- * @param string|null                      $layout_json       survey_layout column
- * @return array{pages: array<int, array>, page_headers: array<int, string>, all_page_numbers: int[], max_page: int}
- */
+// Determine the page number for each question and the page header for each page
 function sp_user_resolve_survey_pages_and_headers(array $questions_ordered, $layout_json) {
     $blocks       = sp_user_normalized_survey_layout_blocks($questions_ordered, $layout_json);
     $page_headers = sp_page_headers_map_from_layout_blocks($blocks);
@@ -325,11 +267,7 @@ function sp_user_resolve_survey_pages_and_headers(array $questions_ordered, $lay
     ];
 }
 
-/**
- * Map question id => survey page (1-based) and survey page header from survey_layout.
- *
- * @return array<int, array{page: int, header: string}>
- */
+// Map question id to survey page and its respective page header
 function sp_get_question_id_to_page_map($survey_id) {
     global $wpdb;
     $survey_id = (int) $survey_id;
@@ -337,7 +275,6 @@ function sp_get_question_id_to_page_map($survey_id) {
         return [];
     }
 
-    // Get layout JSON
     $layout_json = $wpdb->get_var(
         $wpdb->prepare(
             "SELECT survey_layout FROM {$wpdb->prefix}survey_info WHERE id = %d",
@@ -347,7 +284,6 @@ function sp_get_question_id_to_page_map($survey_id) {
 
     $layout = json_decode($layout_json, true);
 
-    // Get ordered questions
     $questions = $wpdb->get_results(
         $wpdb->prepare(
             "SELECT id FROM {$wpdb->prefix}survey_questions 
@@ -393,13 +329,6 @@ function sp_get_question_id_to_page_map($survey_id) {
     return $map;
 }
 
-
-/**
- * One-time migration: build survey_layout from legacy page_headers + question page_number.
- *
- * @param array<string, mixed> $survey_row survey_info row (may include page_headers)
- * @param array<int, array>    $questions  ordered rows with page_number
- */
 function sp_build_survey_layout_from_legacy_survey_row(array $survey_row, array $questions) {
     $legacy = [];
     if (!empty($survey_row['page_headers'])) {
@@ -449,11 +378,6 @@ function sp_build_survey_layout_from_legacy_survey_row(array $survey_row, array 
     return wp_json_encode(array_values($blocks));
 }
 
-/**
- * Read sp_page_headers[N] helper for infer (supports numeric string keys from POST).
- *
- * @param array<string|int, mixed> $hdr_post
- */
 function sp_infer_header_value_for_page(array $hdr_post, $page_num) {
     $page_num = (int) $page_num;
     if (isset($hdr_post[ $page_num ])) {
@@ -466,13 +390,6 @@ function sp_infer_header_value_for_page(array $hdr_post, $page_num) {
     return '';
 }
 
-/**
- * Build layout from POST when sp_survey_layout is missing (no JS).
- *
- * @param array<int, array<string, mixed>>|array<string, mixed> $questions_post
- * @param array<string|int, mixed>|null                        $page_headers_post
- * @return array<int, array<string, mixed>>
- */
 function sp_infer_survey_layout_array_from_post($questions_post, $page_headers_post) {
     $blocks    = [];
     $hdr_post  = is_array($page_headers_post) ? $page_headers_post : [];
@@ -519,12 +436,6 @@ function sp_infer_survey_layout_array_from_post($questions_post, $page_headers_p
     return $blocks;
 }
 
-/**
- * Ordered structural sequence: 'q' (question) and 'pb' (page_break) only; ignores text and headers.
- *
- * @param array<int, array<string, mixed>> $blocks
- * @return array<int, string>
- */
 function sp_layout_structure_signature_from_blocks(array $blocks) {
     $sig = [];
     foreach ($blocks as $b) {
@@ -538,12 +449,7 @@ function sp_layout_structure_signature_from_blocks(array $blocks) {
     return $sig;
 }
 
-/**
- * When a survey has responses, block structural edits (question ids/order, page breaks, scale size).
- *
- * @param int $survey_id
- * @return true|WP_Error
- */
+// When a survey has responses, block structural edits (question and page break order, scale size)
 function sp_validate_locked_survey_edit($survey_id) {
     global $wpdb;
 
@@ -656,14 +562,6 @@ function sp_validate_locked_survey_edit($survey_id) {
     return true;
 }
 
-/**
- * Validate and sanitize survey_layout JSON from the editor. Returns JSON string or WP_Error.
- *
- * @param mixed $raw_json
- * @param mixed $questions_post
- * @param mixed $page_headers_post
- * @return string|WP_Error
- */
 function sp_process_survey_layout_from_post($raw_json, $questions_post, $page_headers_post) {
     $posted = sp_normalize_questions_post_array($questions_post);
 
@@ -721,7 +619,6 @@ function sp_process_survey_layout_from_post($raw_json, $questions_post, $page_he
             if ($content === '') {
                 return new WP_Error('sp_empty_text', 'Text block content cannot be empty.');
             }
-            // Store raw text; escape later when rendering.
             $sanitized[] = [
                 'type'    => 'text',
                 'content' => $content,
@@ -750,13 +647,6 @@ function sp_process_survey_layout_from_post($raw_json, $questions_post, $page_he
     return wp_json_encode(array_values($sanitized));
 }
 
-/**
- * Layout blocks for the create/edit survey template.
- *
- * @param array<int, array<string, mixed>> $questions
- * @param string|null                      $survey_layout_json
- * @return array<int, array<string, mixed>>
- */
 function sp_admin_survey_layout_blocks_for_display($questions, $survey_layout_json) {
     $blocks = [];
     if (!empty($survey_layout_json)) {

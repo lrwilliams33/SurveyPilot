@@ -4,7 +4,6 @@
 }
 
 .sp-dashboard {
-    overflow-x: hidden;
     max-width: 100%;
     box-sizing: border-box;
 }
@@ -39,6 +38,7 @@
     margin-top: 1px;
     margin-bottom: 16px;
     padding-right: 1px;
+    min-width: 0;
 }
 
 .sp-survey-list-label {
@@ -57,6 +57,8 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    min-width: 0;
+    flex-shrink: 1;
 }
 
 .sp-sort-wrapper {
@@ -80,7 +82,6 @@
     color: #1d2327;
     cursor: pointer;
 }
-
 
 .sp-admin-page .wrap {
     margin-top: 0;
@@ -169,11 +170,9 @@
     transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     min-width: 0;
     max-width: 100%;
-    /* Don’t use overflow: hidden — it clips the options dropdown past the card edge. */
     box-sizing: border-box;
 }
 
-/* Open menu stacks above the next card so it isn’t covered when it extends downward. */
 .sp-survey-card:has(.sp-survey-menu.is-open) {
     z-index: 40;
 }
@@ -185,7 +184,8 @@
 }
 
 .sp-survey-title:hover {
-    text-decoration: underline;
+    text-decoration: none;
+    border-bottom-color: currentColor;
 }
 
 .sp-survey-card.sp-nohover,
@@ -197,8 +197,13 @@
 
 .sp-survey-info {
     flex: 1;
-    min-width: 0; /* allows ellipsis to work in flex layout */
-    /* Clicks in “empty” gaps between title / description / shortcode row hit the card beneath. */
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: normal;
+    word-break: normal;
     pointer-events: none;
 }
 
@@ -209,21 +214,25 @@
 .sp-survey-title {
     font-size: 26px;
     font-weight: 700;
-    display: block;
-    width: 100%;
-    max-width: min(100%, 96%);
+    display: inline-block;
+    max-width: 100%;
+    box-sizing: border-box;
     min-width: 0;
+    vertical-align: top;
     color: #1d2327;
     line-height: 1;
-    padding-bottom: 4px;
+    padding-bottom: 2px;
+    border-bottom: 2px solid transparent;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    overflow-wrap: normal;
+    word-break: normal;
 }
 
 .sp-survey-response-count {
     display: block;
-    width: fit-content;
+    width: auto;
     max-width: 100%;
     font-size: 14px;
     font-weight: 500;
@@ -232,6 +241,8 @@
     margin-top: 2px;
     white-space: normal;
     cursor: text;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
 }
 
 .sp-survey-response-count-sep {
@@ -252,10 +263,10 @@
 }
 
 .sp-survey-desc {
-    display: block;
-    width: 100%;
-    max-width: min(100%, 95%);
+    display: inline-block;
+    max-width: 100%;
     min-width: 0;
+    vertical-align: top;
     color: #5f6368;
     font-size: 18px;
     line-height: 1.35;
@@ -265,41 +276,41 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    overflow-wrap: normal;
+    word-break: normal;
 }
 
 .sp-survey-shortcode-box {
     display: flex;
     align-items: center;
-    flex: 1 1 0;
+    flex: 0 1 auto;
     min-width: 0;
-    max-width: min(100%, 78%);
+    max-width: 100%;
+    box-sizing: border-box;
     padding: 6px 8px;
     margin-right: 14px;
     background: #f0f0f1;
     border: 1px solid #dcdcde;
     border-radius: 4px;
-    box-sizing: border-box;
-    /* Padding / flex gaps: default arrow (not I-beam from code); copy button keeps pointer. */
+    overflow: hidden;
     cursor: default;
 }
 
-/* Inner row; code truncates with ellipsis; copy stays fixed width. */
-.sp-survey-shortcode-inline {
+.sp-survey-shortcode-box > .sp-survey-shortcode-inline {
     display: flex;
     align-items: center;
     gap: 6px;
     min-width: 0;
-    flex: 1;
-    width: 100%;
+    max-width: 100%;
+    flex: 1 1 0%;
     box-sizing: border-box;
 }
 
 .sp-survey-shortcode-display {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
-    column-gap: 0;
-    row-gap: 6px;
+    align-self: stretch;
     margin-top: 6px;
     margin-bottom: 4px;
     line-height: 1.35;
@@ -307,15 +318,16 @@
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
-    /* Full-width row: only the gray shortcode well uses default cursor, not empty space to the right. */
+    overflow: hidden;
     cursor: inherit;
 }
 
 .sp-survey-shortcode-display .sp-survey-response-count {
     margin-top: 0;
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     min-width: 0;
     max-width: 100%;
+    white-space: nowrap;
 }
 
 .sp-survey-shortcode-box code {
@@ -331,12 +343,14 @@
     line-height: 1.35;
     flex: 1 1 0;
     min-width: 0;
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: normal;
 }
 
-/* Fixed size; shorter than width with vertical margin so it sits visually centered vs code. */
 .sp-survey-shortcode-box .sp-copy-btn {
     box-sizing: border-box;
     flex-shrink: 0;
@@ -423,7 +437,7 @@
 .sp-survey-card-toolbar {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0;
     flex-shrink: 0;
 }
 
@@ -476,7 +490,6 @@
     box-shadow: 0 0 0 1px #fff, 0 0 0 3px #2271b1, 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
-/* WP core (.wp-core-ui .button…) can set not-allowed on disabled; use normal arrow for unclickable reorder. */
 .wp-core-ui button.button-link.sp-survey-move-btn:disabled,
 .wp-core-ui button.button-link.sp-survey-move-btn[disabled],
 .wp-core-ui button.button-link.sp-survey-move-btn:disabled:hover,
@@ -502,7 +515,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     background: #f5f5f5;
 }
 
-/* When the paired enabled arrow is active, drop disabled chrome so a gray box doesn’t sit under the hover/focus ring. */
 .sp-survey-reorder-actions:has(.sp-survey-move-btn:hover:not(:disabled)) button.sp-survey-move-btn:disabled,
 .sp-survey-reorder-actions:has(.sp-survey-move-btn:hover:not(:disabled)) button.sp-survey-move-btn[disabled],
 .sp-survey-reorder-actions:has(.sp-survey-move-btn:focus:not(:disabled)) button.sp-survey-move-btn:disabled,
@@ -519,11 +531,12 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
 }
 
 .sp-survey-actions .button {
-    margin-left: 5px;
+    margin-left: 0;
 }
 
 .sp-survey-actions {
     position: relative;
+    margin-left: 16px;
 }
 
 .sp-survey-menu-toggle {
@@ -675,17 +688,15 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
 
 .sp-dashboard-content {
     display: flex;
-    gap: 30px; /* space between left and right */
+    gap: 30px;
     min-width: 0;
     max-width: 100%;
 }
 
-/* Left column takes most space */
 .sp-dashboard-left {
     flex: 3;
     min-width: 0;
     max-width: 100%;
-    overflow-x: hidden;
 }
 
 .sp-dashboard .sp-dashboard-left h2 {
@@ -764,7 +775,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     margin: 14px 0;
 }
 
-/* Right column is sidebar */
 .sp-dashboard-right {
     flex: 1;
     align-self: flex-start;
@@ -975,7 +985,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     color: #2271b1;
 }
 
-/* Question & text: hover chip matches WP admin page background; arrow images unchanged */
 .sp-question-card .sp-move-btn:hover:not(:disabled),
 .sp-text-card .sp-move-btn:hover:not(:disabled),
 .sp-question-card .sp-move-btn:focus:not(:disabled),
@@ -991,7 +1000,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     filter: none;
 }
 
-/* Match #sp-add-page-break:disabled — grayed out, no forbidden cursor (pointer passes through) */
 .sp-move-btn:disabled {
     opacity: 0.38;
     cursor: default;
@@ -1217,7 +1225,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     margin-left: 0;
 }
 
-
 .sp-modal {
     display: none;
 }
@@ -1239,6 +1246,8 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     left: 50%;
     transform: translate(-50%, -50%);
     width: min(560px, calc(100% - 40px));
+    min-width: 0;
+    box-sizing: border-box;
     background: #fff;
     border-radius: 8px;
     padding: 18px 18px 16px;
@@ -1250,12 +1259,21 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
 .sp-modal-dialog h2 {
     margin-top: 16px;
     font-size: 26px;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
 }
 
 .sp-modal-dialog p {
     font-size: 18px;
     line-height: 1.5;
     margin: 8px 0 0;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+}
+
+.sp-modal-dialog strong {
+    overflow-wrap: break-word;
+    word-wrap: break-word;
 }
 
 .sp-modal-actions {
@@ -1380,7 +1398,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     cursor: pointer;
 }
 
-/* PDF logo: only the visible “Choose file” button opens the picker; filename text is not clickable. */
 .sp-pdf-logo-file-row {
     position: relative;
     display: flex;
@@ -1404,7 +1421,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     pointer-events: none;
 }
 
-/* Same size as .sp-admin-page .description (“Optional…”) */
 .sp-pdf-logo-filename {
     font-size: 15px;
     color: #646970;
@@ -1413,10 +1429,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     pointer-events: none;
 }
 
-/*
- * PDF logo actions + Likert “Add Option”: same gray secondary background as WP .button-secondary,
- * same font metrics (15px) as Optional hint / filename.
- */
 .sp-admin-page .sp-btn-filelike {
     box-sizing: border-box;
     font-family: inherit;
@@ -1463,7 +1475,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     margin-left: 34px;
 }
 
-/* Extra space before “PDF report logo” (email → message gap stays on first row only) */
 .sp-email-options-row--pdf {
     margin-top: 0;
     margin-bottom: 28px;
@@ -1489,7 +1500,6 @@ button.button-link.sp-survey-move-btn[disabled]:hover {
     box-sizing: border-box;
 }
 
-/* Same visual weight as other email rows (those use <label> and pick up .sp-admin-page label { font-size: 18px }). */
 .sp-pdf-logo-row .sp-email-option-label.sp-pdf-logo-label {
     font-size: 18px;
     font-weight: 600;

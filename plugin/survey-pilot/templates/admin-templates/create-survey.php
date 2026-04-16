@@ -34,6 +34,7 @@
 
     <hr class="sp-section-divider">
 
+    <!-- Survey Builder -->
     <div class="sp-dashboard-content">
         <div class="sp-dashboard-left">
     <form method="post" action="<?php echo admin_url('admin-post.php'); ?>" enctype="multipart/form-data">
@@ -229,7 +230,6 @@
                     foreach ($layout_blocks as $block) :
                         $block_type = isset($block['type']) ? $block['type'] : '';
                         if ($block_type === 'page_header') :
-                            // Page 1 header is edited in #sp-page-1-header above this list.
                         elseif ($block_type === 'page_break') :
                             $ph_value_pb = isset($block['header']) ? (string) $block['header'] : '';
                 ?>
@@ -460,6 +460,7 @@
     </form>
         </div>
 
+        <!-- Survey Editability & Page-Based Aggregation Instructions -->
         <div class="sp-dashboard-right">
             <h2>Survey Editability</h2>
             <p>SurveyPilot uses two editability states once a survey is created:</p>

@@ -2,7 +2,7 @@
 if (!defined('ABSPATH')) exit;
 $start_url = esc_url(add_query_arg(['sp_step' => 'start', 'sp_survey_id' => (int) $sp_survey_id], get_permalink()));
 ?>
-<link rel="stylesheet" href="<?php echo esc_url(SP_URL . 'templates/user-templates/styles.css'); ?>">
+<link rel="stylesheet" href="<?php echo esc_url(SP_URL . 'assets/css/user.css'); ?>">
 
 <div class="sp-container">
 

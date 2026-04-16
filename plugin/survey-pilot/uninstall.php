@@ -1,20 +1,13 @@
 <?php
-/**
- * SurveyPilot uninstall cleanup.
- *
- * Runs when the plugin is deleted from the Plugins screen (not on deactivate).
- * Per site: removes PDF logo attachments referenced in survey data, drops custom
- * tables, deletes plugin options, and removes the generated-PDF directory under uploads.
- */
+/*
+Runs when plugin is deleted from Plugins screen (not on deactivate)
+Removes SurveyPilot’s database tables, plugin options, temporarily generated PDF files, and uploaded PDF logos
+*/
 
- 
 if (!defined('WP_UNINSTALL_PLUGIN')) {
     exit;
 }
 
-/**
- * Remove a directory tree (used only for plugin-owned uploads/survey-pilot-pdfs).
- */
 function sp_uninstall_remove_directory($dir_path) {
     if (!is_dir($dir_path)) {
         return;
@@ -42,9 +35,6 @@ function sp_uninstall_remove_directory($dir_path) {
     @rmdir($dir_path);
 }
 
-/**
- * True when $file_path is inside $directory_path (after normalization).
- */
 function sp_uninstall_is_path_in_directory($file_path, $directory_path) {
     if (!is_string($file_path) || !is_string($directory_path) || $file_path === '' || $directory_path === '') {
         return false;
@@ -74,9 +64,6 @@ function sp_uninstall_is_path_in_directory($file_path, $directory_path) {
     return $normalized_file === $normalized_dir || strpos($normalized_file, $normalized_dir . '/') === 0;
 }
 
-/**
- * SurveyPilot data cleanup for the current blog.
- */
 function sp_uninstall_cleanup_site_data() {
     global $wpdb;
 
@@ -96,7 +83,7 @@ function sp_uninstall_cleanup_site_data() {
         $pdf_dir = trailingslashit($upload_dir['basedir']) . 'survey-pilot-pdfs';
     }
 
-    // PDF header logos: attachment IDs stored on survey_info (Media Library; usually under uploads/YYYY/MM).
+    // Delete uploaded PDF logos
     $has_survey_info = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $survey_info_table));
     if ($has_survey_info === $survey_info_table) {
         $attachment_ids = $wpdb->get_col(
@@ -125,19 +112,20 @@ function sp_uninstall_cleanup_site_data() {
         }
     }
 
+    // Drop database tables
     $wpdb->query("DROP TABLE IF EXISTS {$survey_response_answers_table}");
     $wpdb->query("DROP TABLE IF EXISTS {$survey_response_info_table}");
     $wpdb->query("DROP TABLE IF EXISTS {$survey_questions_table}");
     $wpdb->query("DROP TABLE IF EXISTS {$survey_info_table}");
 
-    delete_option('sp_db_version');
+    // Delete plugin options
     delete_option('sp_email_mode');
     delete_option('sp_smtp_host');
     delete_option('sp_smtp_port');
     delete_option('sp_smtp_user');
     delete_option('sp_smtp_pass');
 
-    // Temp / generated PDFs (see includes/pdf-report.php).
+    // Delete temporarily generated PDFs
     if ($pdf_dir !== '' && $basedir !== '' && sp_uninstall_is_path_in_directory($pdf_dir, $basedir)) {
         sp_uninstall_remove_directory($pdf_dir);
     }
