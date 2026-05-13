@@ -193,7 +193,7 @@ foreach ($questions as $idx => $q_row) {
                             <?php if ($group_first === $group_last) : ?>
                                 Question <?php echo (int) $group_first; ?>
                             <?php else : ?>
-                                Questions <?php echo (int) $group_first; ?> through <?php echo (int) $group_last; ?>
+                                Questions <?php echo (int) $group_first; ?> - <?php echo (int) $group_last; ?>
                             <?php endif; ?>
                         </th>
                         <?php for ($i = $scale_min; $i <= $scale_max; $i++) :

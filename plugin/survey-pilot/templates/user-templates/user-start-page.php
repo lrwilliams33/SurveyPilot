@@ -70,7 +70,7 @@ if ($is_logged_in) {
             get_permalink()
         ));
     ?>
-        <a href="<?php echo $info_url; ?>" class="sp-button">Begin Survey</a>
+        <a href="<?php echo $info_url; ?>" class="sp-button">Begin</a>
     <?php else : ?>
         <div class="sp-notice">You must be logged in to begin this survey.</div>
     <?php endif; ?>
