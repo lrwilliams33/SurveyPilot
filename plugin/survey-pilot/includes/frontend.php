@@ -325,14 +325,11 @@ function sp_get_question_ids_for_page($survey_id, $page_number) {
     return $question_ids;
 }
 
-// Render the survey shortcode and route user to the proper survey step
-function sp_render_survey($atts) {
+// Work out which survey a [survey_pilot] shortcode refers to (by name, id, or the sp_survey_id URL parameter)
+function sp_resolve_survey_id($atts) {
     global $wpdb;
 
-    $atts = shortcode_atts(['name' => '', 'id' => ''], $atts, 'survey_pilot');
-    $step = isset($_GET['sp_step']) ? sanitize_text_field($_GET['sp_step']) : 'start';
-    $valid_steps = ['start', 'info', 'survey', 'confirmation'];
-
+    $atts = shortcode_atts(['name' => '', 'id' => ''], is_array($atts) ? $atts : [], 'survey_pilot');
     $sp_survey_id = 0;
 
     if (!empty($atts['name'])) {
@@ -356,14 +353,14 @@ function sp_render_survey($atts) {
         $sp_survey_id = isset($_GET['sp_survey_id']) ? absint($_GET['sp_survey_id']) : 0;
     }
 
-    ob_start();
+    return $sp_survey_id;
+}
 
-    if ($sp_survey_id <= 0) {
-        echo '<div class="sp-container"><p class="sp-notice">';
-        echo esc_html__('Please specify which survey to display. Use the shortcode with the survey name, for example: [survey_pilot name="My Survey"]', 'survey-pilot');
-        echo '</p></div>';
-        return ob_get_clean();
-    }
+// Decide whether the requested survey step must be redirected to the step the user is allowed to be on.
+// Returns the URL to redirect to, or an empty string when the request can be shown as is.
+function sp_get_flow_redirect_url($sp_survey_id, $permalink) {
+    $step = isset($_GET['sp_step']) ? sanitize_text_field(wp_unslash($_GET['sp_step'])) : 'start';
+    $valid_steps = ['start', 'info', 'survey', 'confirmation'];
 
     if (!in_array($step, $valid_steps, true)) {
         $flow = sp_get_survey_flow($sp_survey_id);
@@ -380,8 +377,7 @@ function sp_render_survey($atts) {
             $redirect_args['sp_page'] = (int) ($flow['allowed_page'] ?? sp_get_first_survey_page($sp_survey_id));
         }
 
-        wp_safe_redirect(add_query_arg($redirect_args, get_permalink()));
-        exit;
+        return add_query_arg($redirect_args, $permalink);
     }
 
     if ($step === 'start' && isset($_GET['sp_survey_id'])) {
@@ -401,8 +397,79 @@ function sp_render_survey($atts) {
             $redirect_args['sp_page'] = (int) $validation['redirect_page'];
         }
 
-        wp_safe_redirect(add_query_arg($redirect_args, get_permalink()));
-        exit;
+        return add_query_arg($redirect_args, $permalink);
+    }
+
+    return '';
+}
+
+// Redirect before any page output is sent. Shortcodes render in the middle of the page, after the theme
+// has already started output, so a header redirect cannot happen from inside the shortcode itself.
+add_action('template_redirect', function () {
+    if (!is_singular()) {
+        return;
+    }
+
+    $post = get_queried_object();
+    if (!($post instanceof WP_Post) || !has_shortcode($post->post_content, 'survey_pilot')) {
+        return;
+    }
+
+    if (!preg_match_all('/' . get_shortcode_regex(['survey_pilot']) . '/', $post->post_content, $matches, PREG_SET_ORDER)) {
+        return;
+    }
+
+    foreach ($matches as $match) {
+        // Skip escaped shortcodes such as [[survey_pilot]]
+        if ($match[1] === '[' && $match[6] === ']') {
+            continue;
+        }
+
+        $atts = shortcode_parse_atts($match[3]);
+        $sp_survey_id = sp_resolve_survey_id($atts);
+
+        if ($sp_survey_id > 0) {
+            $redirect_url = sp_get_flow_redirect_url($sp_survey_id, get_permalink($post));
+            if ($redirect_url !== '') {
+                wp_safe_redirect($redirect_url);
+                exit;
+            }
+        }
+
+        // Only the first shortcode on the page controls the flow, as before
+        break;
+    }
+});
+
+// Render the survey shortcode and route user to the proper survey step
+function sp_render_survey($atts) {
+    $step = isset($_GET['sp_step']) ? sanitize_text_field($_GET['sp_step']) : 'start';
+    $sp_survey_id = sp_resolve_survey_id($atts);
+
+    ob_start();
+
+    if ($sp_survey_id <= 0) {
+        echo '<div class="sp-container"><p class="sp-notice">';
+        echo esc_html__('Please specify which survey to display. Use the shortcode with the survey name, for example: [survey_pilot name="My Survey"]', 'survey-pilot');
+        echo '</p></div>';
+        return ob_get_clean();
+    }
+
+    // Normally the template_redirect hook above has already redirected. This covers pages where it could not
+    // see the shortcode (for example shortcodes added by page builders, widgets, or custom fields).
+    $redirect_url = sp_get_flow_redirect_url($sp_survey_id, get_permalink());
+    if ($redirect_url !== '') {
+        ob_end_clean();
+
+        if (!headers_sent()) {
+            wp_safe_redirect($redirect_url);
+            exit;
+        }
+
+        $safe_url = wp_validate_redirect($redirect_url, home_url('/'));
+        return '<div class="sp-container"><p class="sp-notice">'
+            . '<a href="' . esc_url($safe_url) . '">' . esc_html__('Continue', 'survey-pilot') . '</a></p></div>'
+            . '<script>window.location.replace(' . wp_json_encode($safe_url) . ');</script>';
     }
 
     switch ($step) {
