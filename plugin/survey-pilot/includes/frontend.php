@@ -846,15 +846,13 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
 
     error_log('SP: sending to email=' . $user_email);
     error_log('SP: about to call wp_mail');
-    $sent = wp_mail($user_email, $subject, $message, $headers, $attachments);
-    error_log('SP: wp_mail sent: ' . ($sent ? 'true' : 'false'));
-
-    // Clean up temporarily generated PDF files after sending
-    if (!empty($attachments)) {
+    try {
+        $sent = wp_mail($user_email, $subject, $message, $headers, $attachments);
+        error_log('SP: wp_mail sent: ' . ($sent ? 'true' : 'false'));
+    } finally {
+        // Always clean up temporarily generated PDF files, even if sending throws
         foreach ($attachments as $file) {
-            if (file_exists($file)) {
-                unlink($file);
-            }
+            sp_delete_generated_pdf($file);
         }
     }
 }

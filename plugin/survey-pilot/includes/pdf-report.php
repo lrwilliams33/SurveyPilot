@@ -554,19 +554,64 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_m
         return new WP_Error('sp_upload_error', $upload_dir['error']);
     }
 
-    $pdf_dir = trailingslashit($upload_dir['basedir']) . 'survey-pilot-pdfs';
+    $pdf_dir = sp_get_pdf_base_dir();
 
     if (!file_exists($pdf_dir)) {
         wp_mkdir_p($pdf_dir);
     }
 
-    $file_path = trailingslashit($pdf_dir) . 'Survey-Results-Report.pdf';
+    // Block direct web access to the folder (directory listing and, on Apache, file requests)
+    if (!file_exists($pdf_dir . '/index.php')) {
+        file_put_contents($pdf_dir . '/index.php', "<?php\n// Silence is golden.\n");
+    }
+    if (!file_exists($pdf_dir . '/.htaccess')) {
+        file_put_contents($pdf_dir . '/.htaccess', "Require all denied\n<IfModule !mod_authz_core.c>\nOrder deny,allow\nDeny from all\n</IfModule>\n");
+    }
+
+    // Each report gets its own unguessable folder so concurrent submissions can never overwrite
+    // each other, while the attachment keeps the same filename in the email.
+    try {
+        $unique_dir = $pdf_dir . '/' . bin2hex(random_bytes(16));
+    } catch (\Throwable $e) {
+        return new WP_Error('sp_pdf_write_failed', 'Failed to create PDF file.');
+    }
+
+    if (!wp_mkdir_p($unique_dir)) {
+        return new WP_Error('sp_pdf_write_failed', 'Failed to create PDF file.');
+    }
+
+    $file_path = $unique_dir . '/Survey-Results-Report.pdf';
 
     $written = file_put_contents($file_path, $dompdf->output());
 
     if ($written === false) {
+        sp_delete_generated_pdf($file_path);
         return new WP_Error('sp_pdf_write_failed', 'Failed to create PDF file.');
     }
 
     return $file_path;
+}
+
+// Folder where generated PDF reports are temporarily stored
+function sp_get_pdf_base_dir() {
+    $upload_dir = wp_upload_dir();
+    return untrailingslashit($upload_dir['basedir']) . '/survey-pilot-pdfs';
+}
+
+// Delete a generated PDF and its unique folder (only if it lives inside the PDF folder)
+function sp_delete_generated_pdf($file_path) {
+    if (!is_string($file_path) || $file_path === '') {
+        return;
+    }
+
+    $base = wp_normalize_path(sp_get_pdf_base_dir());
+    $dir  = wp_normalize_path(dirname($file_path));
+
+    if (is_file($file_path)) {
+        @unlink($file_path);
+    }
+
+    if (dirname($dir) === $base && is_dir($dir)) {
+        @rmdir($dir);
+    }
 }
