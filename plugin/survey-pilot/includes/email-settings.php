@@ -94,16 +94,9 @@ function sp_render_email_settings() {
                         <tr class="sp-smtp-row"<?php if (!$is_smtp) echo ' style="display:none;"'; ?>>
                             <th><label for="sp_smtp_pass">Password<span class="sp-required" aria-hidden="true">*</span></label></th>
                             <td>
-                                <?php
-                                $stored_pass    = get_option('sp_smtp_pass', '');
-                                $decrypted_pass = '';
-                                if ($stored_pass) {
-                                    $key = AUTH_KEY;
-                                    $iv  = substr(hash('sha256', AUTH_SALT), 0, 16);
-                                    $decrypted_pass = openssl_decrypt($stored_pass, 'AES-256-CBC', $key, 0, $iv);
-                                }
-                                ?>
-                                <input type="password" name="sp_smtp_pass" id="sp_smtp_pass" class="regular-text" maxlength="255" data-sp-maxlength="255" value="<?php echo esc_attr($decrypted_pass); ?>">
+                                <?php $has_saved_pass = get_option('sp_smtp_pass', '') !== ''; ?>
+                                <?php // The saved password is never printed into the page; leaving this blank keeps it ?>
+                                <input type="password" name="sp_smtp_pass" id="sp_smtp_pass" class="regular-text" maxlength="255" data-sp-maxlength="255" value="" autocomplete="new-password"<?php if ($has_saved_pass) echo ' data-sp-has-saved="1" placeholder="Saved. Leave blank to keep current password."'; ?>>
                                 <p id="sp-smtp-pass-error" class="sp-field-error" style="display:none;">Password is required.</p>
                             </td>
                         </tr>
@@ -173,8 +166,49 @@ function sp_render_email_settings() {
     <?php
 }
 
+// True only while SurveyPilot itself is sending an email. The mail hooks below check this so that
+// SurveyPilot's SMTP settings and From address never affect emails sent by WordPress or other plugins.
+function sp_mail_scope($active = null) {
+    static $is_active = false;
+    if ($active !== null) {
+        $is_active = (bool) $active;
+    }
+    return $is_active;
+}
+
+// Send an email through wp_mail() with SurveyPilot's email settings applied to this message only
+function sp_send_mail($to, $subject, $message, $headers = '', $attachments = []) {
+    sp_mail_scope(true);
+    try {
+        return wp_mail($to, $subject, $message, $headers, $attachments);
+    } finally {
+        sp_mail_scope(false);
+
+        // WordPress reuses a single PHPMailer object for every wp_mail() call in a request, so drop it
+        // after an SMTP send. Otherwise later emails from other plugins would inherit our SMTP server.
+        if (get_option('sp_email_mode') === 'smtp') {
+            global $phpmailer;
+            $phpmailer = null;
+        }
+    }
+}
+
+// Log failures of SurveyPilot's own emails only (not other plugins' emails)
+add_action('wp_mail_failed', function ($wp_error) {
+    if (!sp_mail_scope()) {
+        return;
+    }
+    error_log('SP: wp_mail_failed fired');
+    error_log('SP: error message=' . $wp_error->get_error_message());
+});
+
 // Configure PHPMailer for when SMTP mode is enabled
 add_action('phpmailer_init', function ($phpmailer) {
+    // Leave PHPMailer untouched for emails that SurveyPilot did not send
+    if (!sp_mail_scope()) {
+        return;
+    }
+
     // If using wp_mail (default mode), leave PHPMailer untouched
     if (get_option('sp_email_mode') !== 'smtp') {
         return;
@@ -190,23 +224,28 @@ add_action('phpmailer_init', function ($phpmailer) {
     $key = AUTH_KEY;
     $iv  = substr(hash('sha256', AUTH_SALT), 0, 16);
     $phpmailer->Password = openssl_decrypt($encrypted, 'AES-256-CBC', $key, 0, $iv);
-    $phpmailer->SMTPSecure = 'tls';
+    // Port 465 uses implicit SSL; other ports (such as 587) use STARTTLS
+    $phpmailer->SMTPSecure = ((int) $phpmailer->Port === 465) ? 'ssl' : 'tls';
 
     $phpmailer->From     = get_option('admin_email');
     $phpmailer->FromName = get_bloginfo('name');
 });
 
-add_filter('wp_mail_from', function () {
-    return get_option('admin_email');
+add_filter('wp_mail_from', function ($from) {
+    return sp_mail_scope() ? get_option('admin_email') : $from;
 });
 
-add_filter('wp_mail_from_name', function () {
-    return get_bloginfo('name');
+add_filter('wp_mail_from_name', function ($from_name) {
+    return sp_mail_scope() ? get_bloginfo('name') : $from_name;
 });
 
 // Send a test email from the Email Settings screen
 add_action('wp_ajax_sp_send_test_email', function () {
     check_ajax_referer('sp_send_test_email', 'nonce');
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(['message' => 'You do not have permission to send test emails.'], 403);
+    }
 
     $to = sanitize_email($_POST['email'] ?? '');
 
@@ -214,7 +253,7 @@ add_action('wp_ajax_sp_send_test_email', function () {
         wp_send_json_error(['message' => 'Invalid email address.']);
     }
 
-    $sent = wp_mail(
+    $sent = sp_send_mail(
         $to,
         'SurveyPilot Test Email',
         '<p>This is a test email from SurveyPilot. Your email settings are configured correctly!</p>',

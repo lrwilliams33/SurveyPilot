@@ -54,7 +54,7 @@ add_action('admin_enqueue_scripts', function() {
         'survey-pilot-admin',
         SP_URL . 'assets/js/admin.js',
         [],
-        '2.55',
+        '2.56',
         true
     );
 

@@ -1507,7 +1507,9 @@
             const input = document.getElementById(inputId);
             const error = document.getElementById(errorId);
             if (!input || !error) return;
-            if (!input.value.trim()) {
+            // A saved password is never sent back to the browser; blank means "keep the saved one"
+            const keepsSavedValue = input.dataset.spHasSaved === "1";
+            if (!input.value.trim() && !keepsSavedValue) {
               error.style.display = "";
               input.classList.add("sp-input-error");
               hasError = true;
