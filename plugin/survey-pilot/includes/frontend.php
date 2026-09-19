@@ -1,23 +1,37 @@
 <?php
 
-// Start a user session if not already started
-function sp_ensure_session_started() {
-    if (session_status() === PHP_SESSION_NONE) {
-        if (!headers_sent()) {
-            ini_set('session.use_cookies', '1');
-            ini_set('session.use_only_cookies', '1');
-            session_start();
-        } else {
-            error_log('SP: Session could not start because headers were already sent.');
-        }
+// In-progress survey state (flow position and saved answers) is stored per logged-in user in transients
+// instead of PHP sessions, which conflict with page caching, REST loopbacks, and concurrent requests.
+// Surveys can only be taken while logged in, so the user ID is a sufficient key.
+const SP_PROGRESS_TTL = DAY_IN_SECONDS;
+
+function sp_progress_key($type, $survey_id) {
+    $user_id = get_current_user_id();
+    if ($user_id <= 0) {
+        return '';
+    }
+    return 'sp_' . $type . '_' . $user_id . '_' . absint($survey_id);
+}
+
+// Saved (not yet submitted) answers for the current user, keyed by question ID
+function sp_get_saved_answers($survey_id) {
+    $key = sp_progress_key('ans', $survey_id);
+    $answers = $key !== '' ? get_transient($key) : false;
+    return is_array($answers) ? $answers : [];
+}
+
+function sp_set_saved_answers($survey_id, array $answers) {
+    $key = sp_progress_key('ans', $survey_id);
+    if ($key !== '') {
+        set_transient($key, $answers, SP_PROGRESS_TTL);
     }
 }
-add_action('plugins_loaded', 'sp_ensure_session_started', 1);
-add_action('init', 'sp_ensure_session_started', 1);
 
-// Build session key used to track user's step/page state
-function sp_get_flow_session_key($survey_id) {
-    return 'sp_survey_flow_' . absint($survey_id);
+function sp_clear_saved_answers($survey_id) {
+    $key = sp_progress_key('ans', $survey_id);
+    if ($key !== '') {
+        delete_transient($key);
+    }
 }
 
 // Get the first page of a survey
@@ -106,23 +120,26 @@ function sp_get_last_survey_page($survey_id) {
 
 function sp_get_survey_flow($survey_id) {
     $survey_id = absint($survey_id);
-    $session_key = sp_get_flow_session_key($survey_id);
+    $key = sp_progress_key('flow', $survey_id);
+    $flow = $key !== '' ? get_transient($key) : false;
 
-    if (!isset($_SESSION[$session_key]) || !is_array($_SESSION[$session_key])) {
-        $_SESSION[$session_key] = [
+    if (!is_array($flow)) {
+        $flow = [
             'allowed_step' => 'start',
             'allowed_page' => sp_get_first_survey_page($survey_id),
             'completed'    => false,
         ];
     }
 
-    return $_SESSION[$session_key];
+    return $flow;
 }
 
+// Logged-out visitors never progress past the start step, so their flow is not stored
 function sp_set_survey_flow($survey_id, array $flow) {
-    $survey_id = absint($survey_id);
-    $session_key = sp_get_flow_session_key($survey_id);
-    $_SESSION[$session_key] = $flow;
+    $key = sp_progress_key('flow', $survey_id);
+    if ($key !== '') {
+        set_transient($key, $flow, SP_PROGRESS_TTL);
+    }
 }
 
 function sp_reset_survey_flow($survey_id) {
@@ -452,9 +469,9 @@ function sp_handle_submit_survey() {
         wp_die('Invalid survey ID');
     }
 
-    $session_key = 'sp_survey_answers_' . $survey_id;
-    if (isset($_SESSION[$session_key]) && is_array($_SESSION[$session_key])) {
-        $answers = array_replace($_SESSION[$session_key], $answers);
+    $saved_answers = sp_get_saved_answers($survey_id);
+    if (!empty($saved_answers)) {
+        $answers = array_replace($saved_answers, $answers);
     }
 
     if (empty($answers)) {
@@ -524,14 +541,7 @@ function sp_handle_submit_survey() {
             exit;
         }
 
-        $session_key = 'sp_survey_answers_' . $survey_id;
-        if (!isset($_SESSION[$session_key]) || !is_array($_SESSION[$session_key])) {
-            $_SESSION[$session_key] = [];
-        }
-
-        foreach ($clean_answers as $qid => $val) {
-            $_SESSION[$session_key][$qid] = $val;
-        }
+        sp_set_saved_answers($survey_id, array_replace(sp_get_saved_answers($survey_id), $clean_answers));
 
         sp_unlock_next_survey_page($survey_id, $current_page);
 
@@ -668,9 +678,8 @@ function sp_handle_submit_survey() {
 
     $redirect = $return_url;
 
-    // Clear session data for this survey
-    $session_key = 'sp_survey_answers_' . $survey_id;
-    unset($_SESSION[$session_key]);
+    // Clear saved in-progress answers for this survey
+    sp_clear_saved_answers($survey_id);
 
     wp_safe_redirect(add_query_arg([
         'sp_survey_id' => $survey_id,
@@ -859,34 +868,37 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
 
 // Save in-progress response to user's session storage
 function sp_save_answer_ajax() {
-    if (is_user_logged_in()) {
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'sp_submit_survey')) {
-            error_log('SP AJAX: Nonce verification failed for logged-in user');
-            wp_send_json_error('Security check failed');
-        }
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'sp_submit_survey')) {
+        wp_send_json_error('Security check failed');
     }
 
     $survey_id = isset($_POST['survey_id']) ? absint($_POST['survey_id']) : 0;
     $question_id = isset($_POST['question_id']) ? absint($_POST['question_id']) : 0;
     $answer_value = isset($_POST['answer_value']) ? absint($_POST['answer_value']) : 0;
 
-    error_log('SP AJAX: survey_id=' . $survey_id . ', question_id=' . $question_id . ', answer_value=' . $answer_value);
-
-    if ($survey_id <= 0 || $question_id <= 0 || $answer_value < 0) {
+    if ($survey_id <= 0 || $question_id <= 0) {
         wp_send_json_error('Invalid parameters');
     }
 
-    $session_key = 'sp_survey_answers_' . $survey_id;
-    if (!isset($_SESSION[$session_key])) {
-        $_SESSION[$session_key] = [];
+    // Only keep answers for real questions of this survey so saved state cannot grow with arbitrary IDs
+    global $wpdb;
+    $belongs = $wpdb->get_var(
+        $wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}survey_questions WHERE id = %d AND survey_id = %d",
+            $question_id,
+            $survey_id
+        )
+    );
+    if (!$belongs) {
+        wp_send_json_error('Invalid parameters');
     }
 
-    $_SESSION[$session_key][$question_id] = $answer_value;
-
-    error_log('SP AJAX: Answer saved. Session data: ' . print_r($_SESSION[$session_key], true));
+    $answers = sp_get_saved_answers($survey_id);
+    $answers[$question_id] = $answer_value;
+    sp_set_saved_answers($survey_id, $answers);
 
     wp_send_json_success('Answer saved');
 }
 
+// Saving progress only applies to logged-in users (surveys require login)
 add_action('wp_ajax_sp_save_answer', 'sp_save_answer_ajax');
-add_action('wp_ajax_nopriv_sp_save_answer', 'sp_save_answer_ajax');
