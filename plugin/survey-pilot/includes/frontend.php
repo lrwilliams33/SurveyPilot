@@ -733,7 +733,12 @@ function sp_handle_submit_survey() {
         exit;
     }
 
-    sp_send_survey_email($response_id, $survey_id, $user_id);
+    // The response is already saved, so an email or PDF failure must never stop the user reaching the confirmation page
+    try {
+        sp_send_survey_email($response_id, $survey_id, $user_id);
+    } catch (\Throwable $e) {
+        error_log('SP: Survey email step failed: ' . $e->getMessage());
+    }
 
     sp_mark_survey_complete($survey_id);
 
@@ -896,14 +901,19 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
         $pdf_logo_id = isset($survey->pdf_report_logo_attachment_id)
             ? (int) $survey->pdf_report_logo_attachment_id
             : 0;
-        $pdf_path = sp_generate_survey_pdf(
-            $survey_title,
-            $response_id,
-            $results,
-            $sample_means,
-            $formatted_individual_results,
-            $pdf_logo_id > 0 ? $pdf_logo_id : null
-        );
+        // A PDF problem must not stop the email itself, so treat any failure as "no attachment"
+        try {
+            $pdf_path = sp_generate_survey_pdf(
+                $survey_title,
+                $response_id,
+                $results,
+                $sample_means,
+                $formatted_individual_results,
+                $pdf_logo_id > 0 ? $pdf_logo_id : null
+            );
+        } catch (\Throwable $e) {
+            $pdf_path = new WP_Error('sp_pdf_exception', $e->getMessage());
+        }
         if (!is_wp_error($pdf_path)) {
             $attachments[] = $pdf_path;
         } else {
