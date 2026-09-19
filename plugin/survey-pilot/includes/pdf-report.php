@@ -581,7 +581,7 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_m
         return new WP_Error('sp_pdf_write_failed', 'Failed to create PDF file.');
     }
 
-    $file_path = $unique_dir . '/Survey-Results-Report.pdf';
+    $file_path = $unique_dir . '/Self-Assessment-Results.pdf';
 
     $written = file_put_contents($file_path, $dompdf->output());
 

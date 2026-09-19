@@ -228,7 +228,7 @@ add_action('phpmailer_init', function ($phpmailer) {
     $phpmailer->SMTPSecure = ((int) $phpmailer->Port === 465) ? 'ssl' : 'tls';
 
     $phpmailer->From     = get_option('admin_email');
-    $phpmailer->FromName = get_bloginfo('name');
+    $phpmailer->FromName = 'IBSTPI';
 });
 
 add_filter('wp_mail_from', function ($from) {
@@ -236,7 +236,7 @@ add_filter('wp_mail_from', function ($from) {
 });
 
 add_filter('wp_mail_from_name', function ($from_name) {
-    return sp_mail_scope() ? get_bloginfo('name') : $from_name;
+    return sp_mail_scope() ? 'IBSTPI' : $from_name;
 });
 
 // Send a test email from the Email Settings screen
