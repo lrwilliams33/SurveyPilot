@@ -796,10 +796,15 @@ function sp_replace_survey_questions_from_post($survey_id) {
 
 // Delete a survey (all its elements, responses, and PDF logo)
 add_action('admin_init', function() {
+    // Only handle requests for SurveyPilot's own dashboard page; other admin screens (core or other
+    // plugins) also use "action" and "id" parameters and must not be intercepted here
+    $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
+    if ($page !== 'survey-pilot-dashboard') return;
     if (!isset($_GET['action'], $_GET['id'])) return;
-    $action = sanitize_text_field($_GET['action']);
+    $action = sanitize_text_field(wp_unslash($_GET['action']));
     $survey_id = intval($_GET['id']);
-    
+    if ($action !== 'delete') return;
+
     if (!current_user_can('manage_options')) {
         wp_die('Insufficient permissions');
     }
