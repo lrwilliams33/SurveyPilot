@@ -1,5 +1,9 @@
 <?php
 
+if (!defined('ABSPATH')) {
+    exit;
+}
+
 // Register SurveyPilot admin menu pages
 add_action('admin_menu', function() {
     add_menu_page(
@@ -54,7 +58,7 @@ add_action('admin_enqueue_scripts', function() {
         'survey-pilot-admin',
         SP_URL . 'assets/js/admin.js',
         [],
-        '2.55',
+        '2.56',
         true
     );
 
@@ -644,7 +648,7 @@ function sp_save_survey_questions_from_post($survey_id) {
         $labels = [];
 
         foreach ($scale_rows as $row) {
-            $value = isset($row['value']) ? intval($row['value']) : null;
+            $value = isset($row['value']) ? min(255, intval($row['value'])) : null;
             if ($value === null || $value <= 0) {
                 continue;
             }
@@ -715,7 +719,7 @@ function sp_replace_survey_questions_from_post($survey_id) {
         $labels = [];
 
         foreach ($scale_rows as $row) {
-            $value = isset($row['value']) ? intval($row['value']) : null;
+            $value = isset($row['value']) ? min(255, intval($row['value'])) : null;
             if ($value === null || $value <= 0) continue;
             $values[] = $value;
             $labels[$value] = isset($row['label']) ? trim(wp_unslash($row['label'])) : '';
@@ -796,10 +800,15 @@ function sp_replace_survey_questions_from_post($survey_id) {
 
 // Delete a survey (all its elements, responses, and PDF logo)
 add_action('admin_init', function() {
+    // Only handle requests for SurveyPilot's own dashboard page; other admin screens (core or other
+    // plugins) also use "action" and "id" parameters and must not be intercepted here
+    $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
+    if ($page !== 'survey-pilot-dashboard') return;
     if (!isset($_GET['action'], $_GET['id'])) return;
-    $action = sanitize_text_field($_GET['action']);
+    $action = sanitize_text_field(wp_unslash($_GET['action']));
     $survey_id = intval($_GET['id']);
-    
+    if ($action !== 'delete') return;
+
     if (!current_user_can('manage_options')) {
         wp_die('Insufficient permissions');
     }

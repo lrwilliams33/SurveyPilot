@@ -282,17 +282,19 @@ function sp_get_question_id_to_page_map($survey_id) {
         )
     );
 
-    $layout = json_decode($layout_json, true);
-
     $questions = $wpdb->get_results(
         $wpdb->prepare(
-            "SELECT id FROM {$wpdb->prefix}survey_questions 
-             WHERE survey_id = %d 
+            "SELECT id FROM {$wpdb->prefix}survey_questions
+             WHERE survey_id = %d
              ORDER BY question_order ASC, id ASC",
             $survey_id
         ),
         ARRAY_A
     );
+
+    // Surveys without a saved layout (NULL or unreadable) fall back to a default layout with every
+    // question on page 1, the same way the survey pages themselves do
+    $layout = sp_user_normalized_survey_layout_blocks(is_array($questions) ? $questions : [], $layout_json);
 
     $map = [];
 
@@ -301,6 +303,10 @@ function sp_get_question_id_to_page_map($survey_id) {
     $question_index = 0;
 
     foreach ($layout as $block) {
+
+        if (!is_array($block) || !isset($block['type'])) {
+            continue;
+        }
 
         if ($block['type'] === 'page_header') {
             $current_page = isset($block['page']) ? (int)$block['page'] : $current_page;
@@ -509,7 +515,7 @@ function sp_validate_locked_survey_edit($survey_id) {
         $scale_rows = isset($q['scale']) && is_array($q['scale']) ? $q['scale'] : [];
         $values     = [];
         foreach ($scale_rows as $row) {
-            $v = isset($row['value']) ? intval($row['value']) : 0;
+            $v = isset($row['value']) ? min(255, intval($row['value'])) : 0;
             if ($v > 0) {
                 $values[] = $v;
             }

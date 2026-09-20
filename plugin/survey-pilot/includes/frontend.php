@@ -1,23 +1,41 @@
 <?php
 
-// Start a user session if not already started
-function sp_ensure_session_started() {
-    if (session_status() === PHP_SESSION_NONE) {
-        if (!headers_sent()) {
-            ini_set('session.use_cookies', '1');
-            ini_set('session.use_only_cookies', '1');
-            session_start();
-        } else {
-            error_log('SP: Session could not start because headers were already sent.');
-        }
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+// In-progress survey state (flow position and saved answers) is stored per logged-in user in transients
+// instead of PHP sessions, which conflict with page caching, REST loopbacks, and concurrent requests.
+// Surveys can only be taken while logged in, so the user ID is a sufficient key.
+const SP_PROGRESS_TTL = DAY_IN_SECONDS;
+
+function sp_progress_key($type, $survey_id) {
+    $user_id = get_current_user_id();
+    if ($user_id <= 0) {
+        return '';
+    }
+    return 'sp_' . $type . '_' . $user_id . '_' . absint($survey_id);
+}
+
+// Saved (not yet submitted) answers for the current user, keyed by question ID
+function sp_get_saved_answers($survey_id) {
+    $key = sp_progress_key('ans', $survey_id);
+    $answers = $key !== '' ? get_transient($key) : false;
+    return is_array($answers) ? $answers : [];
+}
+
+function sp_set_saved_answers($survey_id, array $answers) {
+    $key = sp_progress_key('ans', $survey_id);
+    if ($key !== '') {
+        set_transient($key, $answers, SP_PROGRESS_TTL);
     }
 }
-add_action('plugins_loaded', 'sp_ensure_session_started', 1);
-add_action('init', 'sp_ensure_session_started', 1);
 
-// Build session key used to track user's step/page state
-function sp_get_flow_session_key($survey_id) {
-    return 'sp_survey_flow_' . absint($survey_id);
+function sp_clear_saved_answers($survey_id) {
+    $key = sp_progress_key('ans', $survey_id);
+    if ($key !== '') {
+        delete_transient($key);
+    }
 }
 
 // Get the first page of a survey
@@ -106,23 +124,26 @@ function sp_get_last_survey_page($survey_id) {
 
 function sp_get_survey_flow($survey_id) {
     $survey_id = absint($survey_id);
-    $session_key = sp_get_flow_session_key($survey_id);
+    $key = sp_progress_key('flow', $survey_id);
+    $flow = $key !== '' ? get_transient($key) : false;
 
-    if (!isset($_SESSION[$session_key]) || !is_array($_SESSION[$session_key])) {
-        $_SESSION[$session_key] = [
+    if (!is_array($flow)) {
+        $flow = [
             'allowed_step' => 'start',
             'allowed_page' => sp_get_first_survey_page($survey_id),
             'completed'    => false,
         ];
     }
 
-    return $_SESSION[$session_key];
+    return $flow;
 }
 
+// Logged-out visitors never progress past the start step, so their flow is not stored
 function sp_set_survey_flow($survey_id, array $flow) {
-    $survey_id = absint($survey_id);
-    $session_key = sp_get_flow_session_key($survey_id);
-    $_SESSION[$session_key] = $flow;
+    $key = sp_progress_key('flow', $survey_id);
+    if ($key !== '') {
+        set_transient($key, $flow, SP_PROGRESS_TTL);
+    }
 }
 
 function sp_reset_survey_flow($survey_id) {
@@ -308,14 +329,11 @@ function sp_get_question_ids_for_page($survey_id, $page_number) {
     return $question_ids;
 }
 
-// Render the survey shortcode and route user to the proper survey step
-function sp_render_survey($atts) {
+// Work out which survey a [survey_pilot] shortcode refers to (by name, id, or the sp_survey_id URL parameter)
+function sp_resolve_survey_id($atts) {
     global $wpdb;
 
-    $atts = shortcode_atts(['name' => '', 'id' => ''], $atts, 'survey_pilot');
-    $step = isset($_GET['sp_step']) ? sanitize_text_field($_GET['sp_step']) : 'start';
-    $valid_steps = ['start', 'info', 'survey', 'confirmation'];
-
+    $atts = shortcode_atts(['name' => '', 'id' => ''], is_array($atts) ? $atts : [], 'survey_pilot');
     $sp_survey_id = 0;
 
     if (!empty($atts['name'])) {
@@ -339,14 +357,14 @@ function sp_render_survey($atts) {
         $sp_survey_id = isset($_GET['sp_survey_id']) ? absint($_GET['sp_survey_id']) : 0;
     }
 
-    ob_start();
+    return $sp_survey_id;
+}
 
-    if ($sp_survey_id <= 0) {
-        echo '<div class="sp-container"><p class="sp-notice">';
-        echo esc_html__('Please specify which survey to display. Use the shortcode with the survey name, for example: [survey_pilot name="My Survey"]', 'survey-pilot');
-        echo '</p></div>';
-        return ob_get_clean();
-    }
+// Decide whether the requested survey step must be redirected to the step the user is allowed to be on.
+// Returns the URL to redirect to, or an empty string when the request can be shown as is.
+function sp_get_flow_redirect_url($sp_survey_id, $permalink) {
+    $step = isset($_GET['sp_step']) ? sanitize_text_field(wp_unslash($_GET['sp_step'])) : 'start';
+    $valid_steps = ['start', 'info', 'survey', 'confirmation'];
 
     if (!in_array($step, $valid_steps, true)) {
         $flow = sp_get_survey_flow($sp_survey_id);
@@ -363,8 +381,7 @@ function sp_render_survey($atts) {
             $redirect_args['sp_page'] = (int) ($flow['allowed_page'] ?? sp_get_first_survey_page($sp_survey_id));
         }
 
-        wp_safe_redirect(add_query_arg($redirect_args, get_permalink()));
-        exit;
+        return add_query_arg($redirect_args, $permalink);
     }
 
     if ($step === 'start' && isset($_GET['sp_survey_id'])) {
@@ -384,8 +401,79 @@ function sp_render_survey($atts) {
             $redirect_args['sp_page'] = (int) $validation['redirect_page'];
         }
 
-        wp_safe_redirect(add_query_arg($redirect_args, get_permalink()));
-        exit;
+        return add_query_arg($redirect_args, $permalink);
+    }
+
+    return '';
+}
+
+// Redirect before any page output is sent. Shortcodes render in the middle of the page, after the theme
+// has already started output, so a header redirect cannot happen from inside the shortcode itself.
+add_action('template_redirect', function () {
+    if (!is_singular()) {
+        return;
+    }
+
+    $post = get_queried_object();
+    if (!($post instanceof WP_Post) || !has_shortcode($post->post_content, 'survey_pilot')) {
+        return;
+    }
+
+    if (!preg_match_all('/' . get_shortcode_regex(['survey_pilot']) . '/', $post->post_content, $matches, PREG_SET_ORDER)) {
+        return;
+    }
+
+    foreach ($matches as $match) {
+        // Skip escaped shortcodes such as [[survey_pilot]]
+        if ($match[1] === '[' && $match[6] === ']') {
+            continue;
+        }
+
+        $atts = shortcode_parse_atts($match[3]);
+        $sp_survey_id = sp_resolve_survey_id($atts);
+
+        if ($sp_survey_id > 0) {
+            $redirect_url = sp_get_flow_redirect_url($sp_survey_id, get_permalink($post));
+            if ($redirect_url !== '') {
+                wp_safe_redirect($redirect_url);
+                exit;
+            }
+        }
+
+        // Only the first shortcode on the page controls the flow, as before
+        break;
+    }
+});
+
+// Render the survey shortcode and route user to the proper survey step
+function sp_render_survey($atts) {
+    $step = isset($_GET['sp_step']) ? sanitize_text_field($_GET['sp_step']) : 'start';
+    $sp_survey_id = sp_resolve_survey_id($atts);
+
+    ob_start();
+
+    if ($sp_survey_id <= 0) {
+        echo '<div class="sp-container"><p class="sp-notice">';
+        echo esc_html__('Please specify which survey to display. Use the shortcode with the survey name, for example: [survey_pilot name="My Survey"]', 'survey-pilot');
+        echo '</p></div>';
+        return ob_get_clean();
+    }
+
+    // Normally the template_redirect hook above has already redirected. This covers pages where it could not
+    // see the shortcode (for example shortcodes added by page builders, widgets, or custom fields).
+    $redirect_url = sp_get_flow_redirect_url($sp_survey_id, get_permalink());
+    if ($redirect_url !== '') {
+        ob_end_clean();
+
+        if (!headers_sent()) {
+            wp_safe_redirect($redirect_url);
+            exit;
+        }
+
+        $safe_url = wp_validate_redirect($redirect_url, home_url('/'));
+        return '<div class="sp-container"><p class="sp-notice">'
+            . '<a href="' . esc_url($safe_url) . '">' . esc_html__('Continue', 'survey-pilot') . '</a></p></div>'
+            . '<script>window.location.replace(' . wp_json_encode($safe_url) . ');</script>';
     }
 
     switch ($step) {
@@ -421,15 +509,8 @@ add_shortcode('survey_pilot', 'sp_render_survey');
 
 add_action('admin_post_sp_submit_survey', 'sp_handle_submit_survey');
 
-add_action('wp_mail_failed', function ($wp_error) {
-    error_log('SP: wp_mail_failed fired');
-    error_log('SP: error message=' . $wp_error->get_error_message());
-    error_log('SP: error data=' . print_r($wp_error->get_error_data(), true));
-});
-
 // Validate and save survey submission
 function sp_handle_submit_survey() {
-    error_log('Submission handling started');
     if (!isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'sp_submit_survey')) {
         wp_die('Security check failed');
     }
@@ -452,9 +533,9 @@ function sp_handle_submit_survey() {
         wp_die('Invalid survey ID');
     }
 
-    $session_key = 'sp_survey_answers_' . $survey_id;
-    if (isset($_SESSION[$session_key]) && is_array($_SESSION[$session_key])) {
-        $answers = array_replace($_SESSION[$session_key], $answers);
+    $saved_answers = sp_get_saved_answers($survey_id);
+    if (!empty($saved_answers)) {
+        $answers = array_replace($saved_answers, $answers);
     }
 
     if (empty($answers)) {
@@ -524,14 +605,7 @@ function sp_handle_submit_survey() {
             exit;
         }
 
-        $session_key = 'sp_survey_answers_' . $survey_id;
-        if (!isset($_SESSION[$session_key]) || !is_array($_SESSION[$session_key])) {
-            $_SESSION[$session_key] = [];
-        }
-
-        foreach ($clean_answers as $qid => $val) {
-            $_SESSION[$session_key][$qid] = $val;
-        }
+        sp_set_saved_answers($survey_id, array_replace(sp_get_saved_answers($survey_id), $clean_answers));
 
         sp_unlock_next_survey_page($survey_id, $current_page);
 
@@ -662,15 +736,19 @@ function sp_handle_submit_survey() {
         exit;
     }
 
-    sp_send_survey_email($response_id, $survey_id, $user_id);
+    // The response is already saved, so an email or PDF failure must never stop the user reaching the confirmation page
+    try {
+        sp_send_survey_email($response_id, $survey_id, $user_id);
+    } catch (\Throwable $e) {
+        error_log('SP: Survey email step failed: ' . $e->getMessage());
+    }
 
     sp_mark_survey_complete($survey_id);
 
     $redirect = $return_url;
 
-    // Clear session data for this survey
-    $session_key = 'sp_survey_answers_' . $survey_id;
-    unset($_SESSION[$session_key]);
+    // Clear saved in-progress answers for this survey
+    sp_clear_saved_answers($survey_id);
 
     wp_safe_redirect(add_query_arg([
         'sp_survey_id' => $survey_id,
@@ -683,7 +761,6 @@ exit;
 // Send email message (and PDF report) if enabled
 function sp_send_survey_email($response_id, $survey_id, $user_id) {
     global $wpdb;
-    error_log('Email function started');
 
     $user = get_userdata($user_id);
 
@@ -826,14 +903,19 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
         $pdf_logo_id = isset($survey->pdf_report_logo_attachment_id)
             ? (int) $survey->pdf_report_logo_attachment_id
             : 0;
-        $pdf_path = sp_generate_survey_pdf(
-            $survey_title,
-            $response_id,
-            $results,
-            $sample_means,
-            $formatted_individual_results,
-            $pdf_logo_id > 0 ? $pdf_logo_id : null
-        );
+        // A PDF problem must not stop the email itself, so treat any failure as "no attachment"
+        try {
+            $pdf_path = sp_generate_survey_pdf(
+                $survey_title,
+                $response_id,
+                $results,
+                $sample_means,
+                $formatted_individual_results,
+                $pdf_logo_id > 0 ? $pdf_logo_id : null
+            );
+        } catch (\Throwable $e) {
+            $pdf_path = new WP_Error('sp_pdf_exception', $e->getMessage());
+        }
         if (!is_wp_error($pdf_path)) {
             $attachments[] = $pdf_path;
         } else {
@@ -844,51 +926,49 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
         }
     }
 
-    error_log('SP: sending to email=' . $user_email);
-    error_log('SP: about to call wp_mail');
-    $sent = wp_mail($user_email, $subject, $message, $headers, $attachments);
-    error_log('SP: wp_mail sent: ' . ($sent ? 'true' : 'false'));
-
-    // Clean up temporarily generated PDF files after sending
-    if (!empty($attachments)) {
+    try {
+        $sent = sp_send_mail($user_email, $subject, $message, $headers, $attachments);
+    } finally {
+        // Always clean up temporarily generated PDF files, even if sending throws
         foreach ($attachments as $file) {
-            if (file_exists($file)) {
-                unlink($file);
-            }
+            sp_delete_generated_pdf($file);
         }
     }
 }
 
 // Save in-progress response to user's session storage
 function sp_save_answer_ajax() {
-    if (is_user_logged_in()) {
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'sp_submit_survey')) {
-            error_log('SP AJAX: Nonce verification failed for logged-in user');
-            wp_send_json_error('Security check failed');
-        }
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'sp_submit_survey')) {
+        wp_send_json_error('Security check failed');
     }
 
     $survey_id = isset($_POST['survey_id']) ? absint($_POST['survey_id']) : 0;
     $question_id = isset($_POST['question_id']) ? absint($_POST['question_id']) : 0;
     $answer_value = isset($_POST['answer_value']) ? absint($_POST['answer_value']) : 0;
 
-    error_log('SP AJAX: survey_id=' . $survey_id . ', question_id=' . $question_id . ', answer_value=' . $answer_value);
-
-    if ($survey_id <= 0 || $question_id <= 0 || $answer_value < 0) {
+    if ($survey_id <= 0 || $question_id <= 0) {
         wp_send_json_error('Invalid parameters');
     }
 
-    $session_key = 'sp_survey_answers_' . $survey_id;
-    if (!isset($_SESSION[$session_key])) {
-        $_SESSION[$session_key] = [];
+    // Only keep answers for real questions of this survey so saved state cannot grow with arbitrary IDs
+    global $wpdb;
+    $belongs = $wpdb->get_var(
+        $wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}survey_questions WHERE id = %d AND survey_id = %d",
+            $question_id,
+            $survey_id
+        )
+    );
+    if (!$belongs) {
+        wp_send_json_error('Invalid parameters');
     }
 
-    $_SESSION[$session_key][$question_id] = $answer_value;
-
-    error_log('SP AJAX: Answer saved. Session data: ' . print_r($_SESSION[$session_key], true));
+    $answers = sp_get_saved_answers($survey_id);
+    $answers[$question_id] = $answer_value;
+    sp_set_saved_answers($survey_id, $answers);
 
     wp_send_json_success('Answer saved');
 }
 
+// Saving progress only applies to logged-in users (surveys require login)
 add_action('wp_ajax_sp_save_answer', 'sp_save_answer_ajax');
-add_action('wp_ajax_nopriv_sp_save_answer', 'sp_save_answer_ajax');

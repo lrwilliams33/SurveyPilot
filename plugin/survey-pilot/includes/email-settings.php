@@ -6,24 +6,125 @@ if (!defined('ABSPATH')) {
 
 // Email settings fields saved in wp_options table
 add_action('admin_init', function () {
-    register_setting('sp_email_settings', 'sp_email_mode');
-    register_setting('sp_email_settings', 'sp_smtp_host');
-    register_setting('sp_email_settings', 'sp_smtp_port');
-    register_setting('sp_email_settings', 'sp_smtp_user');
+    register_setting('sp_email_settings', 'sp_email_mode', [
+        'sanitize_callback' => 'sp_sanitize_email_mode',
+    ]);
+    register_setting('sp_email_settings', 'sp_smtp_host', [
+        'sanitize_callback' => 'sp_sanitize_smtp_host',
+    ]);
+    register_setting('sp_email_settings', 'sp_smtp_port', [
+        'sanitize_callback' => 'sp_sanitize_smtp_port',
+    ]);
+    register_setting('sp_email_settings', 'sp_smtp_user', [
+        'sanitize_callback' => 'sp_sanitize_smtp_user',
+    ]);
     register_setting('sp_email_settings', 'sp_smtp_pass', [
-        'sanitize_callback' => 'sanitize_text_field',
+        'sanitize_callback' => 'sp_sanitize_smtp_pass',
     ]);
 });
+
+// Only the two supported email modes are accepted
+function sp_sanitize_email_mode($value) {
+    $value = is_string($value) ? sanitize_key($value) : '';
+    return in_array($value, ['default', 'smtp'], true) ? $value : 'default';
+}
+
+// SMTP host must be a hostname or IP address; anything else keeps the previously saved host
+function sp_sanitize_smtp_host($value) {
+    $value = is_string($value) ? trim(sanitize_text_field($value)) : '';
+    $is_hostname = strlen($value) <= 255
+        && preg_match('/^[A-Za-z0-9]([A-Za-z0-9.\-]*[A-Za-z0-9])?$/', $value);
+
+    if ($value === '' || $is_hostname || filter_var(trim($value, '[]'), FILTER_VALIDATE_IP)) {
+        return $value;
+    }
+
+    add_settings_error('sp_email_settings', 'sp_smtp_host_invalid', 'SMTP Host is not valid, so the previous host was kept. Use a host name such as smtp.example.com.');
+    return get_option('sp_smtp_host', '');
+}
+
+// SMTP port must be a whole number from 1 to 65535; anything else keeps the previously saved port
+function sp_sanitize_smtp_port($value) {
+    $port = is_scalar($value) ? absint($value) : 0;
+
+    if ($port >= 1 && $port <= 65535) {
+        return $port;
+    }
+
+    if ($value !== '' && $value !== null) {
+        add_settings_error('sp_email_settings', 'sp_smtp_port_invalid', 'SMTP Port must be a number from 1 to 65535, so the previous port was kept.');
+    }
+    return (int) get_option('sp_smtp_port', 587);
+}
+
+function sp_sanitize_smtp_user($value) {
+    return is_string($value) ? trim(sanitize_text_field($value)) : '';
+}
+
+// Passwords are stored as typed. sanitize_text_field() would silently strip characters such as "<" or
+// "%ab" from a valid password, so only characters that can never be part of a password are removed.
+function sp_sanitize_smtp_pass($value) {
+    return is_string($value) ? str_replace(["\r", "\n", "\0"], '', $value) : '';
+}
 
 // Encrypt SMTP password before it gets stored in the database
 add_filter('pre_update_option_sp_smtp_pass', function ($new_value, $old_value) {
     if (empty($new_value)) {
         return $old_value;
     }
-    $key = AUTH_KEY;
-    $iv  = substr(hash('sha256', AUTH_SALT), 0, 16);
-    return openssl_encrypt($new_value, 'AES-256-CBC', $key, 0, $iv);
+    return sp_encrypt_smtp_password($new_value);
 }, 10, 2);
+
+// Encryption keys are derived from the site's own WordPress salts (wp-config.php or the database)
+function sp_smtp_crypto_keys() {
+    $salt = wp_salt('auth');
+    return [
+        'enc' => hash_hmac('sha256', 'sp-smtp-enc', $salt, true),
+        'mac' => hash_hmac('sha256', 'sp-smtp-mac', $salt, true),
+    ];
+}
+
+// Encrypt with a random IV per value and an HMAC so tampering is detected: "sp2:" + base64(iv . mac . ciphertext)
+function sp_encrypt_smtp_password($plain) {
+    $keys = sp_smtp_crypto_keys();
+    $iv = random_bytes(16);
+    $cipher = openssl_encrypt((string) $plain, 'AES-256-CBC', $keys['enc'], OPENSSL_RAW_DATA, $iv);
+    if ($cipher === false) {
+        return '';
+    }
+    $mac = hash_hmac('sha256', $iv . $cipher, $keys['mac'], true);
+    return 'sp2:' . base64_encode($iv . $mac . $cipher);
+}
+
+// Decrypt a stored SMTP password. Also reads the older format (fixed IV, no HMAC) so existing saved passwords keep working.
+function sp_decrypt_smtp_password($stored) {
+    if (!is_string($stored) || $stored === '') {
+        return '';
+    }
+
+    if (strpos($stored, 'sp2:') === 0) {
+        $raw = base64_decode(substr($stored, 4), true);
+        if ($raw === false || strlen($raw) <= 48) {
+            return '';
+        }
+        $iv     = substr($raw, 0, 16);
+        $mac    = substr($raw, 16, 32);
+        $cipher = substr($raw, 48);
+        $keys   = sp_smtp_crypto_keys();
+        if (!hash_equals(hash_hmac('sha256', $iv . $cipher, $keys['mac'], true), $mac)) {
+            return '';
+        }
+        $plain = openssl_decrypt($cipher, 'AES-256-CBC', $keys['enc'], OPENSSL_RAW_DATA, $iv);
+        return $plain === false ? '' : $plain;
+    }
+
+    if (defined('AUTH_KEY') && defined('AUTH_SALT')) {
+        $plain = openssl_decrypt($stored, 'AES-256-CBC', AUTH_KEY, 0, substr(hash('sha256', AUTH_SALT), 0, 16));
+        return $plain === false ? '' : $plain;
+    }
+
+    return '';
+}
 
 // Add Email Settings submenu under SurveyPilot
 add_action('admin_menu', function () {
@@ -52,7 +153,10 @@ function sp_render_email_settings() {
             <div class="sp-dashboard-left">
                 <h2>Email Configuration</h2>
 
-                <?php $is_smtp = get_option('sp_email_mode') === 'smtp'; ?>
+                <?php
+                $is_smtp = get_option('sp_email_mode') === 'smtp';
+                $sp_settings_errors = get_settings_errors('sp_email_settings');
+                ?>
                 <form method="post" action="options.php" id="sp-email-config-form">
                     <?php settings_fields('sp_email_settings'); ?>
 
@@ -94,16 +198,9 @@ function sp_render_email_settings() {
                         <tr class="sp-smtp-row"<?php if (!$is_smtp) echo ' style="display:none;"'; ?>>
                             <th><label for="sp_smtp_pass">Password<span class="sp-required" aria-hidden="true">*</span></label></th>
                             <td>
-                                <?php
-                                $stored_pass    = get_option('sp_smtp_pass', '');
-                                $decrypted_pass = '';
-                                if ($stored_pass) {
-                                    $key = AUTH_KEY;
-                                    $iv  = substr(hash('sha256', AUTH_SALT), 0, 16);
-                                    $decrypted_pass = openssl_decrypt($stored_pass, 'AES-256-CBC', $key, 0, $iv);
-                                }
-                                ?>
-                                <input type="password" name="sp_smtp_pass" id="sp_smtp_pass" class="regular-text" maxlength="255" data-sp-maxlength="255" value="<?php echo esc_attr($decrypted_pass); ?>">
+                                <?php $has_saved_pass = get_option('sp_smtp_pass', '') !== ''; ?>
+                                <?php // The saved password is never printed into the page; leaving this blank keeps it ?>
+                                <input type="password" name="sp_smtp_pass" id="sp_smtp_pass" class="regular-text" maxlength="255" data-sp-maxlength="255" value="" autocomplete="new-password"<?php if ($has_saved_pass) echo ' data-sp-has-saved="1" placeholder="Saved. Leave blank to keep current password."'; ?>>
                                 <p id="sp-smtp-pass-error" class="sp-field-error" style="display:none;">Password is required.</p>
                             </td>
                         </tr>
@@ -111,7 +208,13 @@ function sp_render_email_settings() {
                     </table>
 
                     <?php if (!empty($_GET['settings-updated'])) : ?>
-                        <p class="sp-test-result-box sp-test-result-box-success">Settings saved successfully.</p>
+                        <?php if (empty($sp_settings_errors)) : ?>
+                            <p class="sp-test-result-box sp-test-result-box-success">Settings saved successfully.</p>
+                        <?php else : ?>
+                            <?php foreach ($sp_settings_errors as $sp_settings_error) : ?>
+                                <p class="sp-test-result-box sp-test-result-box-error"><?php echo esc_html($sp_settings_error['message']); ?></p>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
                     <?php endif; ?>
 
                     <?php submit_button('Save Settings', 'primary sp-btn-large', 'submit', false, ['id' => 'sp-save-settings-btn']); ?>
@@ -173,8 +276,49 @@ function sp_render_email_settings() {
     <?php
 }
 
+// True only while SurveyPilot itself is sending an email. The mail hooks below check this so that
+// SurveyPilot's SMTP settings and From address never affect emails sent by WordPress or other plugins.
+function sp_mail_scope($active = null) {
+    static $is_active = false;
+    if ($active !== null) {
+        $is_active = (bool) $active;
+    }
+    return $is_active;
+}
+
+// Send an email through wp_mail() with SurveyPilot's email settings applied to this message only
+function sp_send_mail($to, $subject, $message, $headers = '', $attachments = []) {
+    sp_mail_scope(true);
+    try {
+        return wp_mail($to, $subject, $message, $headers, $attachments);
+    } finally {
+        sp_mail_scope(false);
+
+        // WordPress reuses a single PHPMailer object for every wp_mail() call in a request, so drop it
+        // after an SMTP send. Otherwise later emails from other plugins would inherit our SMTP server.
+        if (get_option('sp_email_mode') === 'smtp') {
+            global $phpmailer;
+            $phpmailer = null;
+        }
+    }
+}
+
+// Log failures of SurveyPilot's own emails only (not other plugins' emails)
+add_action('wp_mail_failed', function ($wp_error) {
+    if (!sp_mail_scope()) {
+        return;
+    }
+    error_log('SP: wp_mail_failed fired');
+    error_log('SP: error message=' . $wp_error->get_error_message());
+});
+
 // Configure PHPMailer for when SMTP mode is enabled
 add_action('phpmailer_init', function ($phpmailer) {
+    // Leave PHPMailer untouched for emails that SurveyPilot did not send
+    if (!sp_mail_scope()) {
+        return;
+    }
+
     // If using wp_mail (default mode), leave PHPMailer untouched
     if (get_option('sp_email_mode') !== 'smtp') {
         return;
@@ -186,27 +330,29 @@ add_action('phpmailer_init', function ($phpmailer) {
     $phpmailer->Port = get_option('sp_smtp_port', 587);
     $phpmailer->SMTPAuth = true;
     $phpmailer->Username = get_option('sp_smtp_user');
-    $encrypted = get_option('sp_smtp_pass');
-    $key = AUTH_KEY;
-    $iv  = substr(hash('sha256', AUTH_SALT), 0, 16);
-    $phpmailer->Password = openssl_decrypt($encrypted, 'AES-256-CBC', $key, 0, $iv);
-    $phpmailer->SMTPSecure = 'tls';
+    $phpmailer->Password = sp_decrypt_smtp_password(get_option('sp_smtp_pass'));
+    // Port 465 uses implicit SSL; other ports (such as 587) use STARTTLS
+    $phpmailer->SMTPSecure = ((int) $phpmailer->Port === 465) ? 'ssl' : 'tls';
 
     $phpmailer->From     = get_option('admin_email');
-    $phpmailer->FromName = get_bloginfo('name');
+    $phpmailer->FromName = 'IBSTPI';
 });
 
-add_filter('wp_mail_from', function () {
-    return get_option('admin_email');
+add_filter('wp_mail_from', function ($from) {
+    return sp_mail_scope() ? get_option('admin_email') : $from;
 });
 
-add_filter('wp_mail_from_name', function () {
-    return get_bloginfo('name');
+add_filter('wp_mail_from_name', function ($from_name) {
+    return sp_mail_scope() ? 'IBSTPI' : $from_name;
 });
 
 // Send a test email from the Email Settings screen
 add_action('wp_ajax_sp_send_test_email', function () {
     check_ajax_referer('sp_send_test_email', 'nonce');
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(['message' => 'You do not have permission to send test emails.'], 403);
+    }
 
     $to = sanitize_email($_POST['email'] ?? '');
 
@@ -214,7 +360,7 @@ add_action('wp_ajax_sp_send_test_email', function () {
         wp_send_json_error(['message' => 'Invalid email address.']);
     }
 
-    $sent = wp_mail(
+    $sent = sp_send_mail(
         $to,
         'SurveyPilot Test Email',
         '<p>This is a test email from SurveyPilot. Your email settings are configured correctly!</p>',

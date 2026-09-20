@@ -1,3 +1,4 @@
+<?php if (!defined('ABSPATH')) exit; ?>
 <div class="wrap sp-admin-page">
     <?php
     $is_edit = isset($is_edit) && $is_edit && !empty($survey);

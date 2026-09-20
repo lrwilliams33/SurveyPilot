@@ -88,9 +88,9 @@
 }
 
 .sp-instructions {
-    background: #f0f6fc;
-    border: 1px solid #c8dff5;
-    border-left: 4px solid #2271b1;
+    background: #fdf1f0;
+    border: 1px solid #f3c9c6;
+    border-left: 4px solid #C83A32;
     border-radius: 6px;
     padding: 16px 20px;
     margin: 0 0 28px 0;
@@ -135,7 +135,7 @@
     align-items: center;
     justify-content: center;
     gap: 0;
-    background: #2271b1;
+    background: #C83A32;
     color: #fff !important;
     font-size: 15px;
     font-weight: 600;
@@ -148,14 +148,14 @@
     line-height: 1.4;
     white-space: nowrap;
     margin-top: 4px;
-    box-shadow: 0 1px 4px rgba(34, 113, 177, 0.25);
+    box-shadow: 0 1px 4px rgba(200, 58, 50, 0.25);
     transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
 }
 
 .sp-button:hover,
 .sp-button:focus {
-    background: #135e96;
-    box-shadow: 0 2px 8px rgba(34, 113, 177, 0.35);
+    background: #A82E27;
+    box-shadow: 0 2px 8px rgba(200, 58, 50, 0.35);
     transform: translateY(-1px);
     color: #fff !important;
     text-decoration: none !important;
@@ -163,7 +163,7 @@
 
 .sp-button:active {
     transform: translateY(0);
-    box-shadow: 0 1px 3px rgba(34, 113, 177, 0.2);
+    box-shadow: 0 1px 3px rgba(200, 58, 50, 0.2);
 }
 
 .sp-button-secondary {
@@ -263,8 +263,8 @@
 
 .sp-form-group input[type="text"]:focus,
 .sp-form-group input[type="email"]:focus {
-    border-color: #2271b1;
-    box-shadow: 0 0 0 3px rgba(34, 113, 177, 0.15);
+    border-color: #C83A32;
+    box-shadow: 0 0 0 3px rgba(200, 58, 50, 0.15);
 }
 
 .sp-form-group input[readonly] {
@@ -305,12 +305,12 @@
 .sp-question-table thead tr:first-child th {
     position: sticky;
     top: 0;
-    background: #2271b1;
+    background: #C83A32;
     color: #fff;
     font-weight: 700;
     text-align: center;
     padding: 10px 12px;
-    border-bottom: 2px solid #135e96;
+    border-bottom: 2px solid #A82E27;
     z-index: 2;
     white-space: nowrap;
     vertical-align: top;
@@ -363,7 +363,7 @@
 }
 
 .sp-radio-cell input[type="radio"] {
-    accent-color: #2271b1;
+    accent-color: #C83A32;
     width: 17px;
     height: 17px;
     cursor: pointer;
@@ -382,8 +382,8 @@
 }
 
 .sp-question:focus-within {
-    border-color: #2271b1;
-    box-shadow: 0 0 0 3px rgba(34, 113, 177, 0.1);
+    border-color: #C83A32;
+    box-shadow: 0 0 0 3px rgba(200, 58, 50, 0.1);
 }
 
 .sp-question p {
@@ -435,13 +435,13 @@
 }
 
 .sp-scale label:hover {
-    border-color: #2271b1;
-    background: #f0f6fc;
-    color: #2271b1;
+    border-color: #C83A32;
+    background: #fdf1f0;
+    color: #C83A32;
 }
 
 .sp-scale input[type="radio"] {
-    accent-color: #2271b1;
+    accent-color: #C83A32;
     width: 16px;
     height: 16px;
     margin: 0;
@@ -449,13 +449,13 @@
 }
 
 .sp-scale input[type="radio"]:checked + span {
-    color: #2271b1;
+    color: #C83A32;
 }
 
 .sp-scale label:has(input[type="radio"]:checked) {
-    border-color: #2271b1;
-    background: #e8f1fa;
-    color: #135e96;
+    border-color: #C83A32;
+    background: #fbe8e6;
+    color: #A82E27;
 }
 
 .sp-scale-labels {
