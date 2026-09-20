@@ -1,4 +1,5 @@
 <?php
+if (!defined('ABSPATH')) exit;
 global $wpdb;
 $surveys = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}survey_info ORDER BY updated_at DESC", ARRAY_A);
 

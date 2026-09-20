@@ -1,7 +1,11 @@
 <?php
 
+if (!defined('ABSPATH')) {
+    exit;
+}
+
 // Create or update SurveyPilot database tables
-function add_tables(){
+function sp_add_tables(){
     global $wpdb;
     $charset_collate = $wpdb->get_charset_collate();
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');

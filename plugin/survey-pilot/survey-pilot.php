@@ -26,7 +26,7 @@ require_once SP_PATH . 'includes/database.php';
 require_once SP_PATH . 'includes/survey-layout.php';
 
 // Create database tables when plugin is activated
-register_activation_hook(__FILE__, 'add_tables');
+register_activation_hook(__FILE__, 'sp_add_tables');
 
 require_once SP_PATH . 'includes/admin.php';
 require_once SP_PATH . 'includes/admin-pages.php';

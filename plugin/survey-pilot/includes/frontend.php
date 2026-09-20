@@ -1,5 +1,9 @@
 <?php
 
+if (!defined('ABSPATH')) {
+    exit;
+}
+
 // In-progress survey state (flow position and saved answers) is stored per logged-in user in transients
 // instead of PHP sessions, which conflict with page caching, REST loopbacks, and concurrent requests.
 // Surveys can only be taken while logged in, so the user ID is a sufficient key.
@@ -507,7 +511,6 @@ add_action('admin_post_sp_submit_survey', 'sp_handle_submit_survey');
 
 // Validate and save survey submission
 function sp_handle_submit_survey() {
-    error_log('Submission handling started');
     if (!isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'sp_submit_survey')) {
         wp_die('Security check failed');
     }
@@ -758,7 +761,6 @@ exit;
 // Send email message (and PDF report) if enabled
 function sp_send_survey_email($response_id, $survey_id, $user_id) {
     global $wpdb;
-    error_log('Email function started');
 
     $user = get_userdata($user_id);
 
@@ -924,11 +926,8 @@ function sp_send_survey_email($response_id, $survey_id, $user_id) {
         }
     }
 
-    error_log('SP: sending to email=' . $user_email);
-    error_log('SP: about to call wp_mail');
     try {
         $sent = sp_send_mail($user_email, $subject, $message, $headers, $attachments);
-        error_log('SP: wp_mail sent: ' . ($sent ? 'true' : 'false'));
     } finally {
         // Always clean up temporarily generated PDF files, even if sending throws
         foreach ($attachments as $file) {

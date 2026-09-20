@@ -1,5 +1,9 @@
 <?php
 
+if (!defined('ABSPATH')) {
+    exit;
+}
+
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
@@ -565,8 +569,9 @@ function sp_generate_survey_pdf($survey_title, $response_id, $results, $sample_m
     if (!file_exists($pdf_dir . '/index.php')) {
         file_put_contents($pdf_dir . '/index.php', "<?php\n// Silence is golden.\n");
     }
-    if (!file_exists($pdf_dir . '/.htaccess')) {
-        file_put_contents($pdf_dir . '/.htaccess', "Require all denied\n<IfModule !mod_authz_core.c>\nOrder deny,allow\nDeny from all\n</IfModule>\n");
+    $htaccess_rules = "<IfModule mod_authz_core.c>\nRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\nOrder deny,allow\nDeny from all\n</IfModule>\n";
+    if (@file_get_contents($pdf_dir . '/.htaccess') !== $htaccess_rules) {
+        file_put_contents($pdf_dir . '/.htaccess', $htaccess_rules);
     }
 
     // Each report gets its own unguessable folder so concurrent submissions can never overwrite
